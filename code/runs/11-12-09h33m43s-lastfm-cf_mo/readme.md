@@ -1,0 +1,1 @@
+lastfm数据集 epoch 1000 lr 0.001 dropout 1  neighbor_num 8  decay 1e-3 keepprob 0.8
