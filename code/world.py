@@ -8,6 +8,7 @@ from pathlib import Path
 import argparse
 
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Go collaborative filter models")
     parser.add_argument('--bpr_batch', type=int, default=2048,
