@@ -40,6 +40,7 @@ def parse_args():
                         help="enable tensorboard")
     #  parser.add_argument('--comment', type=str, default="lgn")
     parser.add_argument('--load', type=int, default=0)
+
     parser.add_argument('--epoch', type=int, default=50)
     parser.add_argument('--multicore', type=int, default=1, help='whether we use multiprocessing or not in test')
     parser.add_argument('--pretrain', type=int, default=0, help='whether we use pretrained weight or not')

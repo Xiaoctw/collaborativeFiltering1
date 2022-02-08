@@ -32,6 +32,7 @@ class BasicModel(nn.Module):
         raise NotImplementedError
 
 
+
 class PairWiseModel(BasicModel):
     def __init__(self):
         super(PairWiseModel, self).__init__()
@@ -796,7 +797,7 @@ class Mlp(nn.Module):
             outputs.append(task_x)
         return outputs
 
-
+#主模型
 class CF_MO(PairWiseModel):
     def __init__(self, config: dict, dataset: BasicDataset):
         super(CF_MO, self).__init__()
@@ -966,17 +967,18 @@ class CF_MO(PairWiseModel):
         user_graph = self.user_graph
         item_graph = self.item_graph
 
-        for i in range(self.n_layers):
-            users_emb, items_emb = getattr(self, 'layer_{}'.format(i + 1))([users_emb, items_emb])
-            users.append(users_emb)
-            items.append(items_emb)
-        # users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
-        # users.append(users_emb1)
-        # items.append(items_emb1)
-        # users_emb2, items_emb2 = self.user_item_layer([users_emb, items_emb], [user_graph, item_graph])
-        # # users_emb2, items_emb2 = self.user_item_layer([users_emb, items_emb])
-        # users.append(users_emb2)
-        # items.append(items_emb2)
+        # for i in range(self.n_layers):
+        #     users_emb, items_emb = getattr(self, 'layer_{}'.format(i + 1))([users_emb, items_emb])
+        #     users.append(users_emb)
+        #     items.append(items_emb)
+
+        users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
+        users.append(users_emb1)
+        items.append(items_emb1)
+        users_emb2, items_emb2 = self.user_item_layer([users_emb, items_emb], [user_graph, item_graph])
+        # users_emb2, items_emb2 = self.user_item_layer([users_emb, items_emb])
+        users.append(users_emb2)
+        items.append(items_emb2)
 
         # users_emb3, items_emb3 = self.light_gcn_layer([users_emb2, items_emb2])
         # # users_emb3, items_emb3 = self.user_item_layer([users_emb1, items_emb1])
