@@ -8,7 +8,6 @@ from pathlib import Path
 import argparse
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Go collaborative filter models")
     parser.add_argument('--bpr_batch', type=int, default=2048,
@@ -47,28 +46,43 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=2021, help='random seed')
     parser.add_argument('--model', type=str, default='lgn', help='rec-model, support [mf, lgn, ngcf,neumf,cmn,cf_mo]')
     parser.add_argument('--cuda', type=str, default='1')
-    parser.add_argument('--w1', type=float, default=1.)
-    parser.add_argument('--w2', type=float, default=0.1)
+
     parser.add_argument('--attn_weight', type=int, default=0)
     parser.add_argument('--comment', type=str, default='None')
+
+    parser.add_argument('--neighbor_num', type=int, default=8, help='Number of neighbor nodes')
+
+    #多目标学习部分参数
+    parser.add_argument('--multi_action', type=int, default=0)
+    #两个目标的权重
+    parser.add_argument('--w1', type=float, default=1.)
+    parser.add_argument('--w2', type=float, default=0.1)
+    parser.add_argument('--multi_action_type',type=str,default='mmoe',choices=['mmoe','mlp'],help='multi action model type')
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--leaky_alpha', type=float, default=0.2)
     parser.add_argument('--reg_alpha', type=float, default=0.1)
     parser.add_argument('--loss_mode', type=str, default='mse',
                         help="cf_mo loss mode, default is mse, we can choose bce")
-    parser.add_argument('--neighbor_num', type=int, default=8, help='Number of neighbor nodes')
+
+
     # 这些是对一阶关系图进行筛选时，采用的部分参数。
+    parser.add_argument('--top_k_graph', type=int, default=0, help='whether to choose top_k_graph or not')
+    parser.add_argument('--random_walk', default=1, help='choosing random walk to construct top k graph')
     parser.add_argument('--num_path', default=32, help='number of path per node')
     parser.add_argument('--path_length', default=32, help='length of path')
     parser.add_argument('--restart_alpha', type=float, default=0.5)
     parser.add_argument('--adj_top_k', type=int, default=16)
-    parser.add_argument('--multi_action', type=int, default=0)
+    parser.add_argument('--top_k_score', type=int, default=0, help='whether to choose top_k_score or not')
+
+
     parser.add_argument('--distance_measure', type=str, default='occurrence', choices=['occurrence',
                                                                                        'inverted',
                                                                                        'cosine_similarity'])
 
-    parser.add_argument('--sample_neg', type=int, default=0, help='Whether to select to sample'
+    parser.add_argument('--sample_neg', type=int, default=0, help='Whether to select negative items'
                                                                   ' samples according to frequency of occurrence')
+
+    parser.add_argument('--sample_pos', type=int, default=0, help='whether to sample positive items')
 
     parser.add_argument('--delete_user', type=int, default=0, help='Whether to delete users to test cold start')
 
@@ -128,11 +142,16 @@ config = {'batch_size': args.bpr_batch, 'latent_dim_rec': args.recdim, 'n_layers
           'epoch_temp_decay': args.epoch_temp_decay,
           'division_noise': args.division_noise,
           'sample_neg': args.sample_neg,
+          'sample_pos': args.sample_pos,
           'delete_user': args.delete_user,
           'ssl_ratio': args.ssl_ratio,
           'ssl_temp': args.ssl_temp,
           'ssl_reg': args.ssl_reg,
-          'ssl_mode':args.ssl_mode
+          'ssl_mode': args.ssl_mode,
+          'top_k_graph': args.top_k_graph,
+          'random_walk': args.random_walk,
+          'top_k_score':args.top_k_score,
+          'multi_action_type':args.multi_action_type
           }
 # config['batch_size'] = 4096
 
@@ -154,9 +173,10 @@ world_config['DATA_PATH'] = DATA_PATH
 world_config['BOARD_PATH'] = BOARD_PATH
 world_config['FILE_PATH'] = FILE_PATH
 GPU = torch.cuda.is_available()
-# print('GPU is available:{}'.format(GPU))
+print('GPU is available:{}'.format(GPU))
 world_config['GPU'] = GPU
 device = torch.device('cuda:{}'.format(args.cuda) if GPU and args.cuda else "cpu")
+# print('device:{}'.format(device))
 # device=torch.device('cpu')
 world_config['device'] = device
 CORES = multiprocessing.cpu_count() // 2

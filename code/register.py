@@ -44,8 +44,9 @@ MODELS = {
     'ngcf': model.NGCF,
     'neumf': model.NeuMF,
     'cmn': model.CMN,
-    'cf_mo': model.CF_MO,
-    'dhcf': model.DHCF
+    'cf_mo': model.CLAGL,
+    'dhcf': model.DHCF,
+    'multi_action':model.MultiActionModel
 }
 
 LOSSES = {

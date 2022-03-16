@@ -31,6 +31,7 @@ try:
     # if world_config['dataset'] in ['lastfm', 'amazon-electronic']:
     #     raise Exception
     # 一定要先把该文件夹加入到系统路径中
+
     sys.path.append(world_config['CODE_PATH'] + '/sources')
     print(world_config['CODE_PATH'] + '/sources')
     path = join(dirname(__file__), "sources", "sampling.cpp")
@@ -122,7 +123,8 @@ def UniformSample_original(dataset, neg_ratio=1, epoch=None, score=False):
             if config['sample_neg'] == 0:
                 S = sampling.sample_negative_score(dataset.n_users, dataset.m_items,
                                                    dataset.trainDataSize, allPos, allPosScore, neg_ratio)
-            else:
+
+            elif config['sample_neg'] != 0:
                 sum_prob = dataset.getSampleSumRate()
                 prob_list = dataset.getSampleProbRate()
                 if epoch is not None:
@@ -132,6 +134,11 @@ def UniformSample_original(dataset, neg_ratio=1, epoch=None, score=False):
                 S = sampling.sample_negative_score_prob(dataset.n_users, dataset.m_items,
                                                         dataset.trainDataSize, allPos, allPosScore, prob_list,
                                                         neg_ratio)
+
+
+
+
+
     except:
         print('sampling in python')
         S = UniformSample_original_python(dataset, score=score)
@@ -215,10 +222,11 @@ def getFileName():
         file = f"mf-{world_config['dataset']}-{world_config['comment']}-{config['latent_dim_rec']}.pth.tar"
 
     elif world_config['model_name'] in {'lgn', 'ngcf', 'neumf', 'cmn', 'cf_mo', 'dhcf', 'bpr_cfig', 'cf_smp', 'dgcf',
-                                        'drop_cf_mo','cf_ssl'}:
-        file = "model_name-{}-dataset-{}-comment-{}-n_layers-{}-latent_dim-{}-delete_{}.pth.tar".format(world_config['model_name'], world_config['dataset'],
-                                                  world_config['comment'], config['n_layers'],
-                                                  config['latent_dim_rec'], config['delete_user'])
+                                        'drop_cf_mo', 'cf_ssl'}:
+        file = "model_name-{}-dataset-{}-comment-{}-n_layers-{}-latent_dim-{}-delete_{}.pth.tar".format(
+            world_config['model_name'], world_config['dataset'],
+            world_config['comment'], config['n_layers'],
+            config['latent_dim_rec'], config['delete_user'])
     return world_config['FILE_PATH'] + '/' + file
 
 
@@ -513,7 +521,7 @@ def preprocess_adjacency_graph(graph, num_user, num_item):
     data_path = "{0}{1}".format(path,
                                 '/top_{}_data'.format(top_k))
     if os.path.exists(idx1_path):
-    # if False:
+        # if False:
         print(idx1_path)
         with open(idx1_path, 'rb') as f:
             idxs1 = pickle.load(f)

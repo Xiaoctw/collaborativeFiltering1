@@ -20,7 +20,7 @@ world_config = world.world_config
 config = world.config
 from register import dataset
 
-rec_model = model.CF_MO(config, dataset)
+rec_model = model.CLAGL(config, dataset)
 
 weight_file = os.path.dirname(__file__) + '/checkpoints' + '/cf_mo-lastfm-cf_mo-2-64.pth.tar'
 

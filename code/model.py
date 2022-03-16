@@ -1,12 +1,3 @@
-"""
-Created on Mar 1, 2020
-Pytorch Implementation of LightGCN in
-Xiangnan He et al. LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation
-
-@author: Jianbai Ye (gusye@mail.ustc.edu.cn)
-
-Define models here
-"""
 import math
 import time
 
@@ -30,7 +21,6 @@ class BasicModel(nn.Module):
 
     def getColdStartEmbedding(self, users):
         raise NotImplementedError
-
 
 
 class PairWiseModel(BasicModel):
@@ -797,9 +787,15 @@ class Mlp(nn.Module):
             outputs.append(task_x)
         return outputs
 
-#主模型
+
 class CF_MO(PairWiseModel):
     def __init__(self, config: dict, dataset: BasicDataset):
+        """
+        定义CLAGL模型
+        该模型为跨层聚合模型，通过跨层聚合能够更有效地捕捉协同信号
+        :param config:
+        :param dataset:
+        """
         super(CF_MO, self).__init__()
         self.config = config
         self.dataset = dataset
@@ -833,93 +829,17 @@ class CF_MO(PairWiseModel):
         self.stdv = 0.1
         nn.init.normal_(self.embedding_user.weight, std=self.stdv)
         nn.init.normal_(self.embedding_item.weight, std=self.stdv)
-        # 这里还没有归一化
-        self.user_graph = self.dataset.getUserGraph(dense=False)
-        print('user mat loaded')
-        self.item_graph = self.dataset.getItemGraph(dense=False)
-        print('item mat loaded')
-        self.graph, self.graph_self = self.dataset.getSparseGraph(add_self=True)
-        # self.third_graph = self.dataset.getThirdGraph()
-        # print(self.graph)
-        """
-        这里可以选择构建topK的图
-        """
-        # self.graph = self.dataset.getTopKGraph()
-        # print('get topK graph')
-        print('graph has already loaded')
-        for i in range(self.n_layers):
-            setattr(self, 'layer_{}'.format(i + 1),
-                    LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False, dropout=False,
-                                   keep_prob=self.keep_prob)
-                    )
-        # self.pna_layer = PNA_layer(self.latent_dim, self.graph, self.unit_graph, self.diag_graph, activation=False,
-        #                            non_linear=False)
-        self.user_item_layer = Light_UI_layer(latent_dim=self.latent_dim, user_mat=self.user_graph,
-                                              item_mat=self.item_graph,
-                                              activation=False, non_linear=False, dropout=False,
-                                              keep_prob=self.keep_prob)
-        self.light_gcn_layer = LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False,
-                                              dropout=self.dropout, keep_prob=self.keep_prob)
-        # self.top_k_layer = LightGCN_layer(self.latent_dim, self.top_k_graph, dropout=False)
-        # self.norm = nn.BatchNorm1d(self.latent_dim)
-        # self.user_transform = MMoE(hidden_dim=self.latent_dim, num_tasks=2, num_experts=self.num_experts,
-        #                            input_dim=self.latent_dim, expert_size=4, alpha=self.leaky_alpha,
-        #                            use_expert_bias=True, use_gate_bias=True)
-        # self.item_transform = MMoE(hidden_dim=self.latent_dim, num_tasks=2, num_experts=self.num_experts,
-        #                            input_dim=self.latent_dim, expert_size=4, alpha=self.leaky_alpha,
-        #                            use_expert_bias=True, use_gate_bias=True)
 
-        # self.user_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=2, input_dim=self.latent_dim, hidden_size=4,
-        #                           use_bias=True)
-        # self.item_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=2, input_dim=self.latent_dim, hidden_size=4,
-        #                           use_bias=True)
-
-        if self.train_mul:
-            self.user_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=1, input_dim=self.latent_dim, hidden_size=4,
-                                      use_bias=True)
-            self.item_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=1, input_dim=self.latent_dim, hidden_size=4,
-                                      use_bias=True)
-
-        # self.mask_user, self.mask_item = self.dataset.getDegMask()
-        # self.mask_user = torch.LongTensor(self.mask_user)
-        # self.mask_item = torch.LongTensor(self.mask_item)
-        # tem_user = torch.zeros(self.num_users, 2)
-        # tem_item = torch.zeros(self.num_items, 2)
-        # tem_user[range(self.num_users), self.mask_user] = 1
-        # tem_item[range(self.num_items), self.mask_item] = 1
-        # self.mask_user = tem_user.to(world_config['device'])
-        # self.mask_item = tem_item.to(world_config['device'])
-        # self.mask_user = self.mask_user.unsqueeze(1)
-        # self.mask_item = self.mask_item.unsqueeze(1)
         if self.attn_weight:
-            # self.w_u = nn.Parameter(torch.randn(1, 3))
-            # self.w_i = nn.Parameter(torch.randn(1, 3))
-            self.ws = []
             w_u = torch.zeros(self.num_users, self.n_layers + 1, )
             w_i = torch.zeros(self.num_items, self.n_layers + 1, )
             nn.init.normal_(w_u, std=0.01)
             nn.init.normal_(w_i, std=0.01)
             w_u = w_u.to(world_config['device'])
             w_i = w_i.to(world_config['device'])
-            w_u = nn.Parameter(w_u)
-            w_i = nn.Parameter(w_i)
-            self.ws.append(w_u)
-            self.ws.append(w_i)
-            # self.W_u = nn.Linear(self.latent_dim, self.latent_dim)
-            # self.q_u = nn.Parameter(torch.FloatTensor(self.latent_dim))
-            # nn.init.normal_(self.W_u.weight, std=0.01)
-            # nn.init.normal_(self.W_u.bias, std=0.01)
-            # # nn.init.normal_(self.q_u, std=self.stdv)
-            # nn.init.zeros_(self.q_u)
-            # self.W_i = nn.Linear(self.latent_dim, self.latent_dim)
-            # self.q_i = nn.Parameter(torch.FloatTensor(self.latent_dim))
-            # nn.init.normal_(self.W_i.weight, std=0.01)
-            # nn.init.normal_(self.W_i.bias, std=0.01)
-            # # nn.init.normal_(self.q_i, std=self.stdv)
-            # nn.init.zeros_(self.q_i)
-            # self.scorer = nn.Linear(self.latent_dim, 1)
-            # nn.init.normal_(self.scorer.weight, std=self.stdv)
-            # nn.init.normal_(self.scorer.bias, std=self.stdv)
+            self.w_u = nn.Parameter(w_u)
+            self.w_i = nn.Parameter(w_i)
+
 
     def __dropout_x(self, x, keep_prob):
         """
@@ -947,6 +867,211 @@ class CF_MO(PairWiseModel):
         else:
             graphs = self.__dropout_x(graph, keep_prob)
         return graphs
+
+    def getColdStartEmbedding(self, users):
+        users_emb = torch.matmul(users, self.embedding_item.weight)
+        return users_emb
+
+    def getEmbedding(self, users, pos_items, neg_items):
+        all_users, all_items = self.computer()
+        users_emb = all_users[users]
+        pos_emb = all_items[pos_items]
+        neg_emb = all_items[neg_items]
+        users_emb_ego = self.embedding_user(users)
+        pos_emb_ego = self.embedding_item(pos_items)
+        neg_emb_ego = self.embedding_item(neg_items)
+        return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
+
+    def forward(self, users, items):
+        all_users, all_items = self.computer()
+        users_emb = all_users[users]
+        items_emb = all_items[items]
+        inner_pro = torch.mul(users_emb, items_emb)
+        gamma = torch.sum(inner_pro, dim=1)
+        return gamma
+
+class MultiActionModel(CF_MO):
+    def __init__(self, config: dict, dataset: BasicDataset):
+        """
+        定义CLAGL模型
+        该模型为跨层聚合模型，通过跨层聚合能够更有效地捕捉协同信号
+        :param config:
+        :param dataset:
+        """
+        super(MultiActionModel, self).__init__(config, dataset)
+        self.config = config
+        self.dataset = dataset
+        self.__init_weight()
+
+    def __init_weight(self):
+        self.train_mul = int(self.config['multi_action'])
+        self.multi_action_type = self.config['multi_action_type']
+        self.graph, self.graph_self = self.dataset.getSparseGraph(add_self=True)
+
+        print('graph has already loaded')
+        for i in range(self.n_layers):
+            setattr(self, 'layer_{}'.format(i + 1),
+                    LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False, dropout=False,
+                                   keep_prob=self.keep_prob)
+                    )
+        if self.multi_action_type=='mmoe':
+            self.user_transform = MMoE(hidden_dim=self.latent_dim, num_tasks=2, num_experts=self.num_experts,
+                                       input_dim=self.latent_dim, expert_size=4, alpha=self.leaky_alpha,
+                                       use_expert_bias=True, use_gate_bias=True)
+            self.item_transform = MMoE(hidden_dim=self.latent_dim, num_tasks=2, num_experts=self.num_experts,
+                                       input_dim=self.latent_dim, expert_size=4, alpha=self.leaky_alpha,
+                                       use_expert_bias=True, use_gate_bias=True)
+        else:
+            self.user_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=1, input_dim=self.latent_dim, hidden_size=4,
+                                      use_bias=True)
+            self.item_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=1, input_dim=self.latent_dim, hidden_size=4,
+                                      use_bias=True)
+
+
+    def computer(self):
+        """
+        获得用户和物品的嵌入向量
+        :return:
+        """
+        users_emb = self.embedding_user.weight
+        items_emb = self.embedding_item.weight
+        num_user, num_item = users_emb.shape[0], items_emb.shape[0]
+        # all_emb = torch.cat([users_emb, items_emb], dim=0)
+
+        users = [users_emb]
+        items = [items_emb]
+
+        for i in range(self.n_layers):
+            users_emb, items_emb = getattr(self, 'layer_{}'.format(i + 1))([users_emb, items_emb])
+            users.append(users_emb)
+            items.append(items_emb)
+
+        if self.attn_weight:
+            user_cat_emb = torch.cat(users, dim=1).reshape(num_user, -1,
+                                                           self.latent_dim)  # （num_user,n_layers,embedding_dim）
+            items_cat_emb = torch.cat(items, dim=1).reshape(num_item, -1, self.latent_dim)
+            weights = torch.softmax(self.w_u, dim=1)
+            users_emb = torch.bmm(weights.unsqueeze(1), user_cat_emb).squeeze(1)
+            weights = torch.softmax(self.w_i, dim=1)
+            items_emb = torch.bmm(weights.softmax(1).unsqueeze(1), items_cat_emb).squeeze(1)
+        else:
+            users_emb = torch.stack(users, dim=1)  # (batch_size,n_layers,embedding_dim)
+            users_emb = torch.mean(users_emb, dim=1)
+            items_emb = torch.stack(items, dim=1)
+            items_emb = torch.mean(items_emb, dim=1)
+        return users_emb, items_emb
+
+
+    def getUsersRating(self, users):
+        # 这里的all_users和all_items为computer的结果
+        # 这里面会加入MMoE模块
+        all_users, all_items = self.computer()
+        users_emb = all_users[users]
+        items_emb = all_items
+        # users_emb = F.leaky_relu(self.W_u(users_emb), negative_slope=self.leaky_alpha)
+        # items_emb = F.leaky_relu(self.W_i(items_emb), negative_slope=self.leaky_alpha)
+        if not self.train_mul:
+            ratings = torch.matmul(users_emb, items_emb.t())
+        else:
+            user_emb_list = self.user_transform(users_emb)
+            item_emb_list = self.item_transform(items_emb)
+            if self.loss_mode == 'mse':
+                if self.multi_action_type=='mmoe':
+                    ratings = torch.multiply(torch.mm(user_emb_list[0], item_emb_list[0].t()),
+                                             torch.pow(torch.abs(torch.mm(user_emb_list[1], item_emb_list[1].t())),
+                                                       self.reg_alpha))
+                else:
+                    ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
+                                             torch.pow(torch.abs(torch.mm(user_emb_list[0], item_emb_list[0].t())),
+                                                       self.reg_alpha))
+            else:
+                ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
+                                         torch.pow(torch.mm(user_emb_list[0], item_emb_list[0].t()),
+                                                   self.reg_alpha))  # 这里加pow效果不佳
+        return ratings
+
+
+    def loss(self, users, pos, neg, score):
+        users_emb, pos_emb, neg_emb, users_emb0, pos_emb0, neg_emb0 = self.getEmbedding(users, pos, neg)
+        reg_loss = (1 / 2) * (users_emb0.norm(2).pow(2) +
+                              pos_emb0.norm(2).pow(2) +
+                              neg_emb0.norm(2).pow(2)
+                              ) / float(len(users))
+
+        user_emb_list = self.user_transform(users_emb)
+        pos_item_emb_list = self.item_transform(pos_emb)
+        neg_item_emb_list = self.item_transform(neg_emb)
+        if not self.train_mul:
+            pos_scores1 = torch.sum(torch.mul(users_emb, pos_emb), dim=1)  # (num_user,) 可以考虑在这里加入权重
+            neg_scores1 = torch.sum(torch.mul(users_emb, neg_emb), dim=1)  # (num_user,)
+            score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
+            return self.w1 * score1, 0 * score1, reg_loss
+        else:
+            if self.multi_action_type=='mmoe':
+                pos_scores1 = torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1)
+                neg_scores1 = torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1)
+                pred_pos = torch.abs(torch.sum(torch.mul(user_emb_list[1], pos_item_emb_list[1]), dim=1))
+                pred_neg = torch.abs(torch.sum(torch.mul(user_emb_list[1], neg_item_emb_list[1]), dim=1))
+            else:
+                pos_scores1 = torch.sum(torch.mul(users_emb, pos_emb), dim=1)  # (num_user,) 可以考虑在这里加入权重
+                neg_scores1 = torch.sum(torch.mul(users_emb, neg_emb), dim=1)  # (num_user,)
+                pred_pos = torch.abs(torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1))
+                pred_neg = torch.abs(torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1))
+            score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
+            neg_score = torch.zeros_like(score, device=score.device)
+            score2 = F.mse_loss(pred_pos, score) + F.mse_loss(pred_neg, neg_score)
+
+
+            return self.w1 * score1, self.w2 * score2, reg_loss
+
+
+# 主模型
+class CLAGL(CF_MO):
+    def __init__(self, config: dict, dataset: BasicDataset):
+        """
+        定义CLAGL模型
+        该模型为跨层聚合模型，通过跨层聚合能够更有效地捕捉协同信号
+        :param config:
+        :param dataset:
+        """
+        super(CLAGL, self).__init__(config, dataset)
+        self.__init_weight()
+
+    def __init_weight(self):
+        # 这里还没有归一化
+        self.user_graph = self.dataset.getUserGraph(dense=False)
+        print('user mat loaded')
+        self.item_graph = self.dataset.getItemGraph(dense=False)
+        print('item mat loaded')
+        if not config['top_k_graph']:
+            self.graph, self.graph_self = self.dataset.getSparseGraph(add_self=True)
+
+        """
+        这里可以选择构建topK的图
+        """
+        if config['top_k_graph']:
+            self.graph = self.dataset.getTopKGraph()
+            print('get topK graph')
+
+        # self.third_graph = self.dataset.getThirdGraph()
+        # print(self.graph)
+
+        print('graph has already loaded')
+        for i in range(self.n_layers):
+            setattr(self, 'layer_{}'.format(i + 1),
+                    LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False, dropout=False,
+                                   keep_prob=self.keep_prob)
+                    )
+        # self.pna_layer = PNA_layer(self.latent_dim, self.graph, self.unit_graph, self.diag_graph, activation=False,
+        #                            non_linear=False)
+        self.user_item_layer = Light_UI_layer(latent_dim=self.latent_dim, user_mat=self.user_graph,
+                                              item_mat=self.item_graph,
+                                              activation=False, non_linear=False, dropout=False,
+                                              keep_prob=self.keep_prob)
+        self.light_gcn_layer = LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False,
+                                              dropout=self.dropout, keep_prob=self.keep_prob)
+
+
 
     def computer(self):
         """
@@ -980,33 +1105,31 @@ class CF_MO(PairWiseModel):
         users.append(users_emb2)
         items.append(items_emb2)
 
-        # users_emb3, items_emb3 = self.light_gcn_layer([users_emb2, items_emb2])
-        # # users_emb3, items_emb3 = self.user_item_layer([users_emb1, items_emb1])
-        # users.append(users_emb3)
-        # items.append(items_emb3)
+        # 这里给出两种构建三阶关系的方法，一种是2+1，一种是直接三阶。这里选择2+1的方法，较好
+        if self.n_layers > 2:
+            # 添加第三层
+            users_emb3, items_emb3 = self.light_gcn_layer([users_emb2, items_emb2])
+            # users_emb3, items_emb3 = self.user_item_layer([users_emb1, items_emb1])
+            users.append(users_emb3)
+            items.append(items_emb3)
+
+        if self.n_layers > 3:
+            # 构建第四阶计算方法，默认情况下为2+2
+            users_emb4, items_emb4 = self.user_item_layer([users_emb2, items_emb2])
+            users.append(users_emb4)
+            items.append(items_emb4)
+
         # users_emb3, items_emb3 = self.light_gcn_layer([users_emb, items_emb], self.third_graph)
         # users.append(users_emb3)
         # items.append(items_emb3)
-        # users_emb4, items_emb4 = self.user_item_layer([users_emb2, items_emb2])
-        # users.append(users_emb4)
-        # items.append(items_emb4)
 
         if self.attn_weight:
-            # users_emb = torch.stack(users, dim=1)  # (num_user,3,embedding_dim)
-            # w_u = F.softmax(self.w_u, dim=1)
-            # users_emb = torch.bmm(w_u.unsqueeze(0).repeat(self.num_users, 1, 1), users_emb).squeeze(1)
-            # items_emb = torch.stack(items, dim=1)  # (num_item,3,embedding_dim)
-            # w_i = F.softmax(self.w_i, dim=1)
-            # items_emb = torch.bmm(w_i.unsqueeze(0).repeat(self.num_items, 1, 1), items_emb).squeeze(1)
-            # 利用attention 计算不同层聚合的权重大小
-            # print(self.ws[0])
             user_cat_emb = torch.cat(users, dim=1).reshape(num_user, -1,
                                                            self.latent_dim)  # （num_user,n_layers,embedding_dim）
             items_cat_emb = torch.cat(items, dim=1).reshape(num_item, -1, self.latent_dim)
-            weights = torch.softmax(self.ws[0], dim=1)
-            print(weights)
+            weights = torch.softmax(self.w_u, dim=1)
             users_emb = torch.bmm(weights.unsqueeze(1), user_cat_emb).squeeze(1)
-            weights = torch.softmax(self.ws[1], dim=1)
+            weights = torch.softmax(self.w_i, dim=1)
             items_emb = torch.bmm(weights.softmax(1).unsqueeze(1), items_cat_emb).squeeze(1)
         else:
             users_emb = torch.stack(users, dim=1)  # (batch_size,n_layers,embedding_dim)
@@ -1015,9 +1138,7 @@ class CF_MO(PairWiseModel):
             items_emb = torch.mean(items_emb, dim=1)
         return users_emb, items_emb
 
-    def getColdStartEmbedding(self, users):
-        users_emb = torch.matmul(users, self.embedding_item.weight)
-        return users_emb
+
 
     def getUsersRating(self, users):
         # 这里的all_users和all_items为computer的结果
@@ -1025,50 +1146,9 @@ class CF_MO(PairWiseModel):
         all_users, all_items = self.computer()
         users_emb = all_users[users]
         items_emb = all_items
-        # users_emb = F.leaky_relu(self.W_u(users_emb), negative_slope=self.leaky_alpha)
-        # items_emb = F.leaky_relu(self.W_i(items_emb), negative_slope=self.leaky_alpha)
-        if not self.train_mul:
-            ratings = torch.matmul(users_emb, items_emb.t())
-            # users_emb_list = self.user_transform(users_emb)
-            # items_emb_list = self.item_transform(items_emb)
-            # ratings = torch.multiply(torch.sigmoid(torch.mm(users_emb, items_emb.t())),
-            #                          torch.pow(torch.abs(torch.mm(users_emb_list[0], items_emb_list[0].t())),
-            #                                    self.reg_alpha))
-        else:
-            user_emb_list = self.user_transform(users_emb)
-            item_emb_list = self.item_transform(items_emb)
-            # 先简单地使用这个
-            # ratings=torch.matmul(user_emb_list[0], item_emb_list[0].t())
-            if self.loss_mode == 'mse':
-                # users_emb_mse = F.leaky_relu(user_emb_list[0] * users_emb, negative_slope=0.2) + user_emb_list[0]  # + users_emb
-                # items_emb_mse = F.leaky_relu(item_emb_list[0] * items_emb, negative_slope=0.2) + item_emb_list[0]  # + items_emb
-                users_emb_mse = user_emb_list[0]  # + users_emb
-                items_emb_mse = item_emb_list[0]  # + items_emb
-                ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
-                                         torch.pow(torch.abs(torch.mm(users_emb_mse, items_emb_mse.t())),
-                                                   self.reg_alpha))
-                # ratings = torch.multiply(torch.mm(user_emb_list[0], item_emb_list[0].t()),
-                #                          torch.pow(torch.abs(torch.mm(user_emb_list[1], item_emb_list[1].t())),
-                #                                    self.reg_alpha))
-
-            else:
-                # ratings=torch.sigmoid(torch.mm(user_emb_list[0], item_emb_list[0].t()))
-                # ratings=torch.mm(users_emb, items_emb.t())
-                ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
-                                         torch.pow(torch.mm(user_emb_list[0], item_emb_list[0].t()),
-                                                   self.reg_alpha))  # 这里加pow效果不佳
-                # ratings = torch.mm(user_emb_list[0], item_emb_list[0].t())
+        ratings = torch.matmul(users_emb, items_emb.t())
         return ratings
 
-    def getEmbedding(self, users, pos_items, neg_items):
-        all_users, all_items = self.computer()
-        users_emb = all_users[users]
-        pos_emb = all_items[pos_items]
-        neg_emb = all_items[neg_items]
-        users_emb_ego = self.embedding_user(users)
-        pos_emb_ego = self.embedding_item(pos_items)
-        neg_emb_ego = self.embedding_item(neg_items)
-        return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
 
     def loss(self, users, pos, neg, score):
         users_emb, pos_emb, neg_emb, users_emb0, pos_emb0, neg_emb0 = self.getEmbedding(users, pos, neg)
@@ -1077,56 +1157,11 @@ class CF_MO(PairWiseModel):
                               neg_emb0.norm(2).pow(2)
                               ) / float(len(users))
         pos_scores1 = torch.sum(torch.mul(users_emb, pos_emb), dim=1)  # (num_user,) 可以考虑在这里加入权重
-        # print(score)
-        # print(pos_scores1)
-        # pos_scores1 = torch.mul(pos_scores1, score)
         neg_scores1 = torch.sum(torch.mul(users_emb, neg_emb), dim=1)  # (num_user,)
-        if not self.train_mul:
-            # print(score)
-            score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
-            return self.w1 * score1, 0 * score1, reg_loss
-        else:
-            user_emb_list = self.user_transform(users_emb)
-            pos_item_emb_list = self.item_transform(pos_emb)
-            neg_item_emb_list = self.item_transform(neg_emb)
-            # pos_scores1 = torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1)
-            # neg_scores1 = torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1)
-            score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
-            # # # print(score1)
-            if self.loss_mode == 'mse':
-                # users_emb_mse = F.leaky_relu(user_emb_list[0] * users_emb, 0.2) + user_emb_list[0]
-                # pos_items_emb_mse = F.leaky_relu(pos_item_emb_list[0] * pos_emb, 0.2) + pos_item_emb_list[0]
-                # neg_items_emb_mse = F.leaky_relu(neg_item_emb_list[0] * neg_emb, 0.2) + neg_item_emb_list[0]
-                users_emb_mse = user_emb_list[0]  # + users_emb
-                pos_items_emb_mse = pos_item_emb_list[0]  # + pos_emb
-                neg_items_emb_mse = neg_item_emb_list[0]  # + neg_emb
-                pred_pos = torch.abs(torch.sum(torch.mul(users_emb_mse, pos_items_emb_mse), dim=1))
-                pred_neg = torch.abs(torch.sum(torch.mul(users_emb_mse, neg_items_emb_mse), dim=1))
-                neg_score = torch.zeros_like(score, device=score.device)
-                score2 = F.mse_loss(pred_pos, score) + F.mse_loss(pred_neg, neg_score)
-                # print(pred_pos[:10])
-                # print(score[:10])
-            else:
-                idxs = score >= 3  # 获取评分大于等于3的样本
-                # print("user_emb_list[0] shape:{}".format(user_emb_list[0].shape))
-                users_emb2 = user_emb_list[0][idxs]
-                # print("users_emb2 shape:{}".format(users_emb2.shape))
-                pos_items_emb2 = pos_item_emb_list[0][idxs]
-                neg_items_emb2 = neg_item_emb_list[0][idxs]
-                pos_scores2 = torch.sum(users_emb2 * pos_items_emb2, dim=1)
-                neg_scores2 = torch.sum(users_emb2 * neg_items_emb2, dim=1)
-                score2 = torch.mean(F.softplus(neg_scores2 - pos_scores2))
-                # print('pos_scores2:{}'.format(pos_scores2[:10]))
-                # print('neg_scores2:{}'.format(neg_scores2[:10]))
-            return self.w1 * score1, self.w2 * score2, reg_loss
+        score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
+        return self.w1 * score1, 0 * score1, reg_loss
 
-    def forward(self, users, items):
-        all_users, all_items = self.computer()
-        users_emb = all_users[users]
-        items_emb = all_items[items]
-        inner_pro = torch.mul(users_emb, items_emb)
-        gamma = torch.sum(inner_pro, dim=1)
-        return gamma
+
 
 
 class Gate(nn.Module):

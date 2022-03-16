@@ -191,8 +191,6 @@ py::array_t<int> sample_negative_score_prob(int user_num, int item_num, int trai
     py::array_t<int> S_array = py::array_t<int>({train_num, row});
     py::buffer_info buf_S = S_array.request();
     int *ptr = (int *)buf_S.ptr;
-
-
     float sum_val=0;
     vector<float> vector1;
     vector1.push_back(0);
@@ -201,8 +199,6 @@ py::array_t<int> sample_negative_score_prob(int user_num, int item_num, int trai
         vector1.push_back(sum_val);
     }
     sum_prob=vector1;
-
-
     int sum_prob_int=(int) sum_prob[sum_prob.size()-1]; //这个值为设定的最大值
     map<int,int> items2cnt;
     int i=0;
@@ -243,6 +239,69 @@ py::array_t<int> sample_negative_score_prob(int user_num, int item_num, int trai
     return S_array;
 }
 
+
+py::array_t<int> sample_negative_score_pos_prob(int user_num, int item_num, int train_num, std::vector<std::vector<int>> allPos, std::vector<std::vector<int>> allPosScore,std::vector<float> prob,int neg_num)
+{
+    //n_user
+    int perUserNum = train_num / (user_num+1);
+    int row = neg_num + 3;
+    py::array_t<int> S_array = py::array_t<int>({train_num, row});
+    py::buffer_info buf_S = S_array.request();
+    int *ptr = (int *)buf_S.ptr;
+    float sum_val=0;
+    vector<float> sum_prob;
+    //vector<float> vector2;
+    sum_prob.push_back(0);
+    for(int i=0;i<prob.size();i++){
+        sum_val+=prob[i];
+        sum_prob.push_back(sum_val);
+    }
+    int sum_prob_int=(int)sum_prob[sum_prob.size()-1]; //这个值为设定的最大值
+    map<int,int> items2cnt;
+    int i=0;
+    while(i<train_num){
+        int tem_user=randint_(user_num);
+        std::vector<int> pos_items=allPos[tem_user];
+        std::vector<int> pos_items_scores=allPosScore[tem_user];
+        if(pos_items.size()==0){
+            continue;
+        }
+//        int pos_index=randint_(pos_items.size());
+//        int pos_item=pos_items[pos_index];
+
+        float tem_rand_val=(float)randint_(sum_prob_int);
+        int pos_index=search(sum_prob,tem_rand_val);
+        int pos_item=pos_items[pos_index];
+        int pos_item_score=pos_items_scores[pos_index];
+        while(true){
+        //这里可以考虑加上概率
+            int neg_item=randint_(item_num);
+//            if(pos_items.find(neg_item)!=pos_items.end()){
+//              float tem_rand_val=randfloat_(sum_prob_int);
+//              float tem_rand_val=(float)randint_(sum_prob_int);
+//              int neg_item=search(sum_prob,tem_rand_val); //这个就是采样得到的负类样本
+              items2cnt[neg_item]+=1;
+              if(find(pos_items.begin(),pos_items.end(),neg_item)!=pos_items.end()){
+                    continue;
+                    }
+                    else{
+                  ptr[i*row]=tem_user;
+                  ptr[i*row+1]=pos_item;
+                  ptr[i*row+2]=neg_item;
+                  ptr[i*row+3]=pos_item_score;
+                  break;
+            }
+        }
+        i+=1;
+    }
+//    for(i=0;i<item_num;i++){
+//        cout<<"item: "<<i<<" prob: "<<sum_prob[i+1]-sum_prob[i]<<" cnt: "<<items2cnt[i]<<endl;
+//    }
+    return S_array;
+}
+
+
+
 void set_seed(unsigned int seed)
 {
     srand(seed);
@@ -261,4 +320,5 @@ PYBIND11_MODULE(sampling, m)
     m.def("sample_negative_score", &sample_negative_score,"sampling negatives scores for all","user_num"_a, "item_num"_a, "train_num"_a, "allPos"_a,"allPosScore"_a, "neg_num"_a);
     m.def("sample_negative_ByUser", &sample_negative_ByUser, "sampling negatives for given users","users"_a, "item_num"_a, "allPos"_a, "neg_num"_a);
     m.def("sample_negative_score_prob", &sample_negative_score_prob,"sampling negatives scores for all with sum prob","user_num"_a, "item_num"_a, "train_num"_a, "allPos"_a,"allPosScore"_a, "sum_prob"_a, "neg_num"_a);
+    m.def("sample_negative_score_pos_prob", &sample_negative_score_pos_prob,"sampling positive scores for all with sum prob","user_num"_a, "item_num"_a, "train_num"_a, "allPos"_a,"allPosScore"_a, "prob"_a, "neg_num"_a);
 }

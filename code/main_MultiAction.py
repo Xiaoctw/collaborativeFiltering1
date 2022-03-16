@@ -25,19 +25,17 @@ utils.set_seed(world_config['seed'])
 print(">>SEED:", world_config['seed'])
 # ==============================
 
-world_config['comment'] = 'cf_mo'
-world_config['model_name'] = 'cf_mo'
+world_config['comment'] = 'multi_action'
+world_config['model_name'] = 'multi_action'
 
 from register import dataset
 
 print('---recModel---')
-recModel = model.CLAGL(config, dataset)
+recModel = model.MultiActionModel(config, dataset)
 print('--recModel finished---')
 
 recModel = recModel.to(world_config['device'])
-# print('device:{}'.format(world_config['device']))
 
-# print(recModel.parameters())
 loss = utils.ScoreLoss(recModel, config)
 
 weight_file = utils.getFileName()
@@ -62,7 +60,6 @@ if world_config['tensorboard']:
 else:
     w = None
     cprint("not enable tensorflowboard")
-
 try:
     # recModel.train_mul()
     recall_list = []
@@ -74,8 +71,6 @@ try:
             result = Procedure.Test(dataset, recModel, epoch, w, config['multicore'])
             recall_list.append(float("{:.3f}".format(float(result['recall'][0]))))
             ndcg_list.append(float("{:.3f}".format(float(result['ndcg'][0]))))
-        # recModel.train_attn_weight()
-        # prnt('begin train')
         Procedure.Score_train_original(dataset, recModel, loss, epoch, Neg_k, w)
     result= Procedure.Test(dataset, recModel, world_config['TRAIN_epochs'], w, config['multicore'])
     recall_list.append(float("{:.3f}".format(float(result['recall'][0]))))

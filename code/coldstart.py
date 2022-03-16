@@ -24,7 +24,7 @@ world_config['model_name'] = 'cf_mo'
 from register import dataset
 
 print('---recModel---')
-recModel = model.CF_MO(config, dataset)
+recModel = model.CLAGL(config, dataset)
 print('--recModel finished---')
 
 recModel = recModel.to(world_config['device'])
@@ -79,9 +79,11 @@ with torch.no_grad():
     users_emb = torch.matmul(users, recModel.embedding_item.weight)
     # rating = recModel.getUsersRating(users_gpu)
     _, all_items = recModel.computer()
+    # users_emb=torch.matmul(users,all_items)
     rating = torch.matmul(users_emb, all_items.t())
     exclude_index = []
     exclude_items = []
+
     for range_i, items in enumerate(allPos):
         exclude_index.extend([range_i] * len(items))
         exclude_items.extend(items)
@@ -92,6 +94,10 @@ with torch.no_grad():
     users_list.append(users)
     rating_list.append(rating_K.cpu())
     groundTrue_list.append(groundTrue)
+
+# with torch.no_grad():
+
+
 
 X = zip(rating_list, groundTrue_list)
 pre_results = []

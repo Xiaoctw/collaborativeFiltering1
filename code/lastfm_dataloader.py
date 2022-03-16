@@ -189,13 +189,14 @@ class LastFM(BasicDataset):
     #         self.Graph = self.Graph.coalesce().to(world_config['device'])
     #         # self.Graph_self = self.graph_normalization_tensor(self.Graph_self)
     #         self.Graph_self = self.Graph_self.coalesce().to(world_config['device'])
-    #         # self.top_k_graph = self.graph_helper(self.top_k_graph)
-    #         # self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
+    #         self.top_k_graph = self.graph_helper(self.top_k_graph)
+    #         self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
     #     if add_self:
     #         # return self.top_k_graph, self.Graph_self
     #         return self.Graph, self.Graph_self
     #     return self.Graph
     #     # return self.top_k_graph
+
     def getSparseGraph(self, add_self=False):
         print("loading adjacency matrix")
         if self.Graph is None:
@@ -289,15 +290,42 @@ class LastFM(BasicDataset):
         return adj_mat, all_h_list, all_t_list, all_v_list
 
     def getTopKGraph(self):
-        print('begin walk and find topK')
-        self.top_k_graph = utils.preprocess_adjacency_graph(self.UserItemNet, self.n_users, self.m_items)
-        print('finish walk and find topK')
-        # self.top_k_graph = utils.preprocess_topk_score_graph(self.UserItemScoreNet, self.n_users, self.m_items)
-        # self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
+        """
+        todo 添加不同topk方法的参数
+        :return:
+        """
+        if config['random_walk']:
+            print('begin walk and find topK')
+            self.top_k_graph = utils.preprocess_adjacency_graph(self.UserItemNet, self.n_users, self.m_items)
+            print('finish walk and find topK')
+        # 两种计算topK计算图的方法
+        if config['top_k_score'] != 0 and config['random_walk'] == 0:
+            print('begin to topk score graph')
+            self.top_k_graph = utils.preprocess_topk_score_graph(self.UserItemScoreNet, self.n_users, self.m_items)
+        if config['top_k_score'] == 0 and config['random_walk'] == 0:
+            print('begin to construct random select graph')
+            self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
         # self.top_k_graph = self.graph_normalization_tensor(self.top_k_graph)
-        self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
+        self.top_k_graph=self.graph_helper(self.top_k_graph)
+        # self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
         self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
         return self.top_k_graph
+
+    def graph_helper(self, graph):
+        # 相当于进行计算D-1AD操作
+        dense = graph.to_dense()
+        D = torch.sum(dense, dim=1).float()
+        D[D == 0.] = 1.
+        D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
+        dense = dense / D_sqrt
+        dense = dense / D_sqrt.t()
+        index = dense.nonzero()
+        data = dense[dense >= 1e-9]
+        assert len(index) == len(data)
+        graph = torch.sparse.FloatTensor(index.t(), data, torch.Size(
+            [self.n_users + self.m_items, self.n_users + self.m_items]))
+        graph = graph.coalesce().to(world_config['device'])
+        return graph
 
     def __build_test(self):
         """
