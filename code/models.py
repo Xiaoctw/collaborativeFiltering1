@@ -197,8 +197,8 @@ class CF_SSL(PairWiseModel):
             ssl_loss = ssl_loss_item + ssl_loss_user
 
         else:
-            #merge操作
-            #这里会有unique
+            # merge操作
+            # 这里会有unique
             users = torch.unique(users)
             items = torch.unique(items)
             users_emb1 = users_emb_sub1[users]
@@ -225,3 +225,5 @@ class UI_layer(nn.Module):
         h_u1 = torch.sparse.mm(user_mat, users_emb)
         h_i1 = torch.sparse.mm(item_mat, items_emb)
         return torch.cat([h_u1, h_i1], dim=0)
+
+

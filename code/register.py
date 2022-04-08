@@ -10,6 +10,8 @@ from lastfm_dataloader import LastFM
 from loader_dataloader import Loader
 from datarate_dataloader import DataRate
 
+import Procedure
+
 config = world.config
 world_config = world.world_config
 
@@ -46,10 +48,17 @@ MODELS = {
     'cmn': model.CMN,
     'cf_mo': model.CLAGL,
     'dhcf': model.DHCF,
-    'multi_action':model.MultiActionModel
+    'multi_action': model.MultiActionModel,
+    'clagl_social': model.CLAGL_Social
 }
 
 LOSSES = {
     'bpr': utils.BPRLoss,
     'score_loss': utils.ScoreLoss,
+}
+
+TRAINS = {
+    'score_train': Procedure.Score_train_original,
+    'bpr_train': Procedure.BPR_train_original,
+    'ssl_train':Procedure.SSL_train_original
 }

@@ -840,7 +840,6 @@ class CF_MO(PairWiseModel):
             self.w_u = nn.Parameter(w_u)
             self.w_i = nn.Parameter(w_i)
 
-
     def __dropout_x(self, x, keep_prob):
         """
         设计两种dropout方法，第一种为边dropout,也就是默认dropout方法，第二种为节点dropout,也就是随机删除节点。
@@ -890,6 +889,7 @@ class CF_MO(PairWiseModel):
         gamma = torch.sum(inner_pro, dim=1)
         return gamma
 
+
 class MultiActionModel(CF_MO):
     def __init__(self, config: dict, dataset: BasicDataset):
         """
@@ -914,7 +914,7 @@ class MultiActionModel(CF_MO):
                     LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False, dropout=False,
                                    keep_prob=self.keep_prob)
                     )
-        if self.multi_action_type=='mmoe':
+        if self.multi_action_type == 'mmoe':
             self.user_transform = MMoE(hidden_dim=self.latent_dim, num_tasks=2, num_experts=self.num_experts,
                                        input_dim=self.latent_dim, expert_size=4, alpha=self.leaky_alpha,
                                        use_expert_bias=True, use_gate_bias=True)
@@ -926,7 +926,6 @@ class MultiActionModel(CF_MO):
                                       use_bias=True)
             self.item_transform = Mlp(hidden_dim=self.latent_dim, num_tasks=1, input_dim=self.latent_dim, hidden_size=4,
                                       use_bias=True)
-
 
     def computer(self):
         """
@@ -961,7 +960,6 @@ class MultiActionModel(CF_MO):
             items_emb = torch.mean(items_emb, dim=1)
         return users_emb, items_emb
 
-
     def getUsersRating(self, users):
         # 这里的all_users和all_items为computer的结果
         # 这里面会加入MMoE模块
@@ -976,7 +974,7 @@ class MultiActionModel(CF_MO):
             user_emb_list = self.user_transform(users_emb)
             item_emb_list = self.item_transform(items_emb)
             if self.loss_mode == 'mse':
-                if self.multi_action_type=='mmoe':
+                if self.multi_action_type == 'mmoe':
                     ratings = torch.multiply(torch.mm(user_emb_list[0], item_emb_list[0].t()),
                                              torch.pow(torch.abs(torch.mm(user_emb_list[1], item_emb_list[1].t())),
                                                        self.reg_alpha))
@@ -989,7 +987,6 @@ class MultiActionModel(CF_MO):
                                          torch.pow(torch.mm(user_emb_list[0], item_emb_list[0].t()),
                                                    self.reg_alpha))  # 这里加pow效果不佳
         return ratings
-
 
     def loss(self, users, pos, neg, score):
         users_emb, pos_emb, neg_emb, users_emb0, pos_emb0, neg_emb0 = self.getEmbedding(users, pos, neg)
@@ -1007,7 +1004,7 @@ class MultiActionModel(CF_MO):
             score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
             return self.w1 * score1, 0 * score1, reg_loss
         else:
-            if self.multi_action_type=='mmoe':
+            if self.multi_action_type == 'mmoe':
                 pos_scores1 = torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1)
                 neg_scores1 = torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1)
                 pred_pos = torch.abs(torch.sum(torch.mul(user_emb_list[1], pos_item_emb_list[1]), dim=1))
@@ -1020,8 +1017,6 @@ class MultiActionModel(CF_MO):
             score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
             neg_score = torch.zeros_like(score, device=score.device)
             score2 = F.mse_loss(pred_pos, score) + F.mse_loss(pred_neg, neg_score)
-
-
             return self.w1 * score1, self.w2 * score2, reg_loss
 
 
@@ -1045,17 +1040,15 @@ class CLAGL(CF_MO):
         print('item mat loaded')
         if not config['top_k_graph']:
             self.graph, self.graph_self = self.dataset.getSparseGraph(add_self=True)
-
         """
         这里可以选择构建topK的图
         """
         if config['top_k_graph']:
             self.graph = self.dataset.getTopKGraph()
             print('get topK graph')
-
-        # self.third_graph = self.dataset.getThirdGraph()
-        # print(self.graph)
-
+        if self.n_layers > 2 and self.config['third_graph']:
+            # 在这里选择已经构建好的三阶图来进行GNN传播
+            self.third_graph = self.dataset.getThirdGraph()
         print('graph has already loaded')
         for i in range(self.n_layers):
             setattr(self, 'layer_{}'.format(i + 1),
@@ -1071,8 +1064,6 @@ class CLAGL(CF_MO):
         self.light_gcn_layer = LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False,
                                               dropout=self.dropout, keep_prob=self.keep_prob)
 
-
-
     def computer(self):
         """
         获得用户和物品的嵌入向量
@@ -1085,17 +1076,10 @@ class CLAGL(CF_MO):
 
         users = [users_emb]
         items = [items_emb]
-        # users = []
-        # items = []
 
         graph = self.graph
         user_graph = self.user_graph
         item_graph = self.item_graph
-
-        # for i in range(self.n_layers):
-        #     users_emb, items_emb = getattr(self, 'layer_{}'.format(i + 1))([users_emb, items_emb])
-        #     users.append(users_emb)
-        #     items.append(items_emb)
 
         users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
         users.append(users_emb1)
@@ -1108,20 +1092,21 @@ class CLAGL(CF_MO):
         # 这里给出两种构建三阶关系的方法，一种是2+1，一种是直接三阶。这里选择2+1的方法，较好
         if self.n_layers > 2:
             # 添加第三层
-            users_emb3, items_emb3 = self.light_gcn_layer([users_emb2, items_emb2])
-            # users_emb3, items_emb3 = self.user_item_layer([users_emb1, items_emb1])
-            users.append(users_emb3)
-            items.append(items_emb3)
+            if self.config['third_graph']:
+                users_emb3, items_emb3 = self.light_gcn_layer([users_emb, items_emb], self.third_graph)
+                users.append(users_emb3)
+                items.append(items_emb3)
+            else:
+                users_emb3, items_emb3 = self.light_gcn_layer([users_emb2, items_emb2])
+                # users_emb3, items_emb3 = self.user_item_layer([users_emb1, items_emb1])
+                users.append(users_emb3)
+                items.append(items_emb3)
 
         if self.n_layers > 3:
             # 构建第四阶计算方法，默认情况下为2+2
             users_emb4, items_emb4 = self.user_item_layer([users_emb2, items_emb2])
             users.append(users_emb4)
             items.append(items_emb4)
-
-        # users_emb3, items_emb3 = self.light_gcn_layer([users_emb, items_emb], self.third_graph)
-        # users.append(users_emb3)
-        # items.append(items_emb3)
 
         if self.attn_weight:
             user_cat_emb = torch.cat(users, dim=1).reshape(num_user, -1,
@@ -1138,8 +1123,6 @@ class CLAGL(CF_MO):
             items_emb = torch.mean(items_emb, dim=1)
         return users_emb, items_emb
 
-
-
     def getUsersRating(self, users):
         # 这里的all_users和all_items为computer的结果
         # 这里面会加入MMoE模块
@@ -1148,7 +1131,6 @@ class CLAGL(CF_MO):
         items_emb = all_items
         ratings = torch.matmul(users_emb, items_emb.t())
         return ratings
-
 
     def loss(self, users, pos, neg, score):
         users_emb, pos_emb, neg_emb, users_emb0, pos_emb0, neg_emb0 = self.getEmbedding(users, pos, neg)
@@ -1162,6 +1144,47 @@ class CLAGL(CF_MO):
         return self.w1 * score1, 0 * score1, reg_loss
 
 
+class CLAGL_Social(CLAGL):
+    def __init__(self, config: dict, dataset: BasicDataset):
+        super(CLAGL_Social, self).__init__(config, dataset)
+        self.__init_weight()
+
+    def __init_weight(self):
+        self.user_social_graph = self.dataset.getSocialGraph(dense=False)
+        print('social network loaded')
+        # self.user_graph = self.dataset.getUserGraph(dense=False)
+        # print('user mat loaded')
+        # self.item_graph = self.dataset.getItemGraph(dense=False)
+        # print('item mat loaded')
+
+        # self.light_gcn_layer = LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False,
+        #                                       dropout=self.dropout, keep_prob=self.keep_prob)
+
+    def computer(self):
+        users_emb = self.embedding_user.weight
+        items_emb = self.embedding_item.weight
+        users = [users_emb]
+        items = [items_emb]
+
+        graph = self.graph
+
+        ## layer1
+        users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
+        users.append(users_emb1)
+        items.append(items_emb1)
+
+        ##layer2
+        items_emb2 = torch.sparse.mm(self.item_graph, items_emb)
+        items.append(items_emb2)
+        users_emb2 = torch.sparse.mm(self.user_social_graph, users_emb)
+        users.append(users_emb2)
+
+        users_emb = torch.stack(users, dim=1)  # (batch_size,n_layers,embedding_dim)
+        users_emb = torch.mean(users_emb, dim=1)
+        items_emb = torch.stack(items, dim=1)
+        items_emb = torch.mean(items_emb, dim=1)
+
+        return users_emb, items_emb
 
 
 class Gate(nn.Module):

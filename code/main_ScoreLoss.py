@@ -7,12 +7,13 @@ import sys
 import time
 import Procedure
 from os.path import join
-import models
+import model
 import os
 from warnings import simplefilter
 
 simplefilter(action="ignore", category=FutureWarning)
 
+# args = config.parse_args()
 world_config = world.world_config
 config = world.config
 # print(world_config)
@@ -22,17 +23,25 @@ if not os.path.exists(world_config['FILE_PATH']):
 # ==============================
 utils.set_seed(world_config['seed'])
 print(">>SEED:", world_config['seed'])
+# ==============================
 
-world_config['comment'] = 'cf_ssl'
-world_config['model_name'] = 'cf_ssl'
+
+world_config['comment'] = world_config['model_name']
+
+import register
 from register import dataset
 
 print('---recModel---')
-recModel = models.CF_SSL(config, dataset)
+recmodel = register.MODELS[world_config['model_name']](config, dataset)
 print('--recModel finished---')
-recModel = recModel.to(world_config['device'])
 
-loss = utils.ScoreLoss(recModel, config)
+recModel = recmodel.to(world_config['device'])
+# print('device:{}'.format(world_config['device']))
+
+# print(recModel.parameters())
+loss = register.LOSSES[world_config['loss']](recModel, config)
+
+train_original = register.TRAINS[world_config['train_original']]
 
 weight_file = utils.getFileName()
 print('load and save to {}'.format(weight_file))
@@ -52,6 +61,10 @@ if world_config['tensorboard']:
     from tensorboardX import SummaryWriter
 
     w: SummaryWriter = SummaryWriter(str(summary_path))
+# join(world.BOARD_PATH, time.strftime("%m-%d-%Hh%Mm%Ss-") + "-" + world.comment)
+else:
+    w = None
+    cprint("not enable tensorflowboard")
 
 try:
     # recModel.train_mul()
@@ -65,8 +78,8 @@ try:
             recall_list.append(float("{:.3f}".format(float(result['recall'][0]))))
             ndcg_list.append(float("{:.3f}".format(float(result['ndcg'][0]))))
         # recModel.train_attn_weight()
-        # print('begin train')
-        Procedure.SSL_train_original(dataset, recModel, loss, epoch, Neg_k, w)
+        # prnt('begin train')
+        train_original(dataset, recModel, loss, epoch, Neg_k, w)
     result = Procedure.Test(dataset, recModel, world_config['TRAIN_epochs'], w, config['multicore'])
     recall_list.append(float("{:.3f}".format(float(result['recall'][0]))))
     ndcg_list.append(float("{:.3f}".format(float(result['ndcg'][0]))))

@@ -1,3 +1,7 @@
+"""
+验证CLAGL模型冷启动问题的有效性
+python code/coldstart.py --dataset yelp2018  --delete_user 1 --model cf_mo
+"""
 import world
 import utils
 from world import cprint
@@ -18,8 +22,8 @@ if not os.path.exists(world_config['FILE_PATH']):
 utils.set_seed(world_config['seed'])
 print(">>SEED:", world_config['seed'])
 
-world_config['comment'] = 'cf_mo'
-world_config['model_name'] = 'cf_mo'
+world_config['comment'] = world_config['model_name']
+world_config['model_name'] = world_config['model_name']
 
 from register import dataset
 
@@ -32,10 +36,15 @@ recModel = recModel.to(world_config['device'])
 weight_file = utils.getFileName()
 print('load and save to {}'.format(weight_file))
 users = []
+# 选择部分物品，在原图中删除，利用图中已经存在的嵌入向量获得这些节点的嵌入向量，进行冷启动实验
 if world_config['dataset'] == 'lastfm':
     users = [20, 100, 200, 400, 600, 800, 1000, 1200, 1500]
 elif world_config['dataset'] == 'yelp2018':
     users = [100, 200, 800, 1000, 2000, 4000, 8000, 10000, 12000, 15000, 18000, 20000]
+elif world_config['dataset'] == 'gowalla':
+    users = [100, 1000, 2000, 4000, 10000, 12000, 15000]
+else:  # 对应亚马逊的数据集
+    users = [20, 100, 200, 1000, 1500]
 
 
 def test_one_batch(X):
@@ -94,10 +103,6 @@ with torch.no_grad():
     users_list.append(users)
     rating_list.append(rating_K.cpu())
     groundTrue_list.append(groundTrue)
-
-# with torch.no_grad():
-
-
 
 X = zip(rating_list, groundTrue_list)
 pre_results = []

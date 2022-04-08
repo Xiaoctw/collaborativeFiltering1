@@ -222,7 +222,7 @@ def getFileName():
         file = f"mf-{world_config['dataset']}-{world_config['comment']}-{config['latent_dim_rec']}.pth.tar"
 
     elif world_config['model_name'] in {'lgn', 'ngcf', 'neumf', 'cmn', 'cf_mo', 'dhcf', 'bpr_cfig', 'cf_smp', 'dgcf',
-                                        'drop_cf_mo', 'cf_ssl'}:
+                                        'drop_cf_mo', 'cf_ssl','clagl_social'}:
         file = "model_name-{}-dataset-{}-comment-{}-n_layers-{}-latent_dim-{}-delete_{}.pth.tar".format(
             world_config['model_name'], world_config['dataset'],
             world_config['comment'], config['n_layers'],
@@ -295,6 +295,7 @@ def normalize_graph(mat, mode=0):
         _D_half1 = sp.diags(_dseq)  # 开平方构成对角矩阵
         # _D_half[sp]
         adj_normalized = _D_half1 @ mat @ _D_half1  # 矩阵乘法
+
     elif mode == 1:
         _dseq = mat.sum(1).A1  # 按行求和后拉直
         # _dseq[_dseq == 0] = 1

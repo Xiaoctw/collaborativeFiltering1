@@ -5,7 +5,7 @@ class Loader(BasicDataset):
     """
     Dataset type for pytorch \n
     Incldue graph information
-    gowalla dataset
+    gowalla dataset，yelp2018数据集
     导入相关数据集
     """
 
@@ -78,8 +78,9 @@ class Loader(BasicDataset):
                                       shape=(self.n_user, self.m_item))
 
         if config['delete_user']:
+            # 不同数据集去除的用户不一样
             if world_config['dataset'] == 'yelp2018':
-                self.delete_list = [100,200,800, 1000, 2000, 4000,8000, 10000,12000, 15000,18000, 20000]
+                self.delete_list = [100, 200, 800, 1000, 2000, 4000, 8000, 10000, 12000, 15000, 18000, 20000]
             else:
                 self.delete_list = [100, 1000, 2000, 4000, 10000, 12000, 15000]
             self.delete_lists = {}
@@ -92,7 +93,7 @@ class Loader(BasicDataset):
         self.items_D = np.array(self.UserItemNet.sum(axis=0)).squeeze()
         self.items_D[self.items_D == 0.] = 1.
         # pre-calculate
-        self._allPos = self.getUserPosItems(list(range(self.n_user)),flag=False)
+        self._allPos = self.getUserPosItems(list(range(self.n_user)), flag=False)
         self._allPosScores = None
         self.__testDict = self.__build_test()
         print(f"{world_config['dataset']} is ready to go")
@@ -116,7 +117,6 @@ class Loader(BasicDataset):
         将会根据给定的列表删除部分物品对应的连接，然后再进行测试。
         :return:
         """
-
         rows, cols = [], []
 
         for i in range(self.n_users):
@@ -130,6 +130,11 @@ class Loader(BasicDataset):
                                       shape=(self.n_users, self.m_items))
 
     def getDeleteUserGraph(self, users):
+        """
+        获得被删除用户的图，利用这个图可以构造用户的嵌入向量
+        :param users: 指定用户
+        :return:
+        """
         num_delete_user = len(users)
         graph = torch.zeros(num_delete_user, self.m_items, device=world_config['device'])
         for i, user in enumerate(users):
@@ -166,6 +171,7 @@ class Loader(BasicDataset):
 
     def _split_A_hat(self, A):
         # 意思是把图给分割了，画成了很多等份进行训练
+        # 对于大规模图来说很有帮助
         A_fold = []
         fold_len = (self.n_users + self.m_items) // self.folds
         for i_fold in range(self.folds):
@@ -178,10 +184,11 @@ class Loader(BasicDataset):
         return A_fold
 
     def _convert_sp_mat_to_sp_tensor(self, X):
-        '''
+        """
         转化为
         tensor形式
-        '''
+        转化后可以在GPU中运行
+        """
         coo = X.tocoo().astype(np.float32)
         row = torch.Tensor(coo.row).long()
         col = torch.Tensor(coo.col).long()
@@ -191,13 +198,23 @@ class Loader(BasicDataset):
         return mat
 
     def getSparseGraph(self, add_self=False):
+        """
+        获得稀疏图，用户-物品的交互图
+        :param add_self: 是否添加自连接，是的话add_self为True
+        :return:
+        """
+        adj_mat_path = self.path + '/s_pre_adj_mat.npz'
+        adj_mat_self_path = self.path + '/s_pre_adj_mat_self.npz'
+        if config['delete_user'] and False:
+            adj_mat_path = self.path + '/s_pre_adj_mat_delete.npz'
+            adj_mat_self_path = self.path + '/s_pre_adj_mat_self_delete.npz'
         print("loading adjacency matrix")
         if self.Graph is None:
             try:
-                pre_adj_mat = sp.load_npz(self.path + '/s_pre_adj_mat.npz')
+                pre_adj_mat = sp.load_npz(adj_mat_path)
                 norm_adj = pre_adj_mat
                 if add_self:
-                    pre_adj_mat_self = sp.load_npz(self.path + '/s_pre_adj_mat_self.npz')
+                    pre_adj_mat_self = sp.load_npz(adj_mat_self_path)
                     norm_adj_self = pre_adj_mat_self
                 print("successfully loaded...")
             except:
@@ -219,7 +236,7 @@ class Loader(BasicDataset):
                 norm_adj = norm_adj.tocsr()
                 end = time()
                 print("costing {:.4f} s, saved norm_mat...".format(end - s))
-                sp.save_npz(self.path + '/s_pre_adj_mat.npz', norm_adj)
+                sp.save_npz(adj_mat_path, norm_adj)
                 if add_self:
                     adj_mat_self = adj_mat + sp.eye(adj_mat.shape[0])
                     rowsum_self = np.array(adj_mat_self.sum(axis=1))
@@ -229,9 +246,9 @@ class Loader(BasicDataset):
                     norm_adj_self = d_mat_self.dot(adj_mat_self)
                     norm_adj_self = norm_adj_self.dot(d_mat_self)
                     norm_adj_self = norm_adj_self.tocsr()
-                    sp.save_npz(self.path + '/s_pre_adj_mat_self.npz', norm_adj_self)
+                    sp.save_npz(adj_mat_self_path, norm_adj_self)
 
-            if self.split == True:
+            if self.split:
                 self.Graph = self._split_A_hat(norm_adj)
                 if add_self:
                     self.Graph_self = self._split_A_hat(norm_adj_self)
@@ -252,6 +269,7 @@ class Loader(BasicDataset):
         返回用户所有的度中，小于指定比例的mask
         如果小于，那么返回true
         否则返回false
+        如果多目标学习评分采用交叉熵会使用该函数
         :return:
         """
         user_degs = [len(self.UserItemNet[i].nonzero()[0]) for i in range(self.n_user)]
@@ -267,15 +285,34 @@ class Loader(BasicDataset):
         return mask_user, mask_item
 
     def getTopKGraph(self):
+        """
+        这里只支持随机游走方法
+        因为这个数据集没有评分信息
+        :return:
+        """
         print('begin walk and find topK')
         self.top_k_graph = utils.preprocess_adjacency_graph(self.UserItemNet, self.n_users, self.m_items)
         print('finish walk and find topK')
-        # self.top_k_graph = utils.preprocess_topk_score_graph(self.UserItemScoreNet, self.n_users, self.m_items)
-        # self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
-        # self.top_k_graph = self.graph_normalization_tensor(self.top_k_graph)
-        self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
+        self.top_k_graph = self.graph_helper(self.top_k_graph)
         self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
         return self.top_k_graph
+
+    def graph_helper(self, graph):
+        # 相当于进行计算D-1AD操作
+        # 进行归一化
+        dense = graph.to_dense()
+        D = torch.sum(dense, dim=1).float()
+        D[D == 0.] = 1.
+        D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
+        dense = dense / D_sqrt
+        dense = dense / D_sqrt.t()
+        index = dense.nonzero()
+        data = dense[dense >= 1e-9]
+        assert len(index) == len(data)
+        graph = torch.sparse.FloatTensor(index.t(), data, torch.Size(
+            [self.n_users + self.m_items, self.n_users + self.m_items]))
+        graph = graph.coalesce().to(world_config['device'])
+        return graph
 
     def __build_test(self):
         """
@@ -303,7 +340,7 @@ class Loader(BasicDataset):
         # print(self.UserItemNet[users, items])
         return np.array(self.UserItemNet[users, items]).astype('uint8').reshape((-1,))
 
-    def getUserPosItems(self, users,flag=True):
+    def getUserPosItems(self, users, flag=True):
         posItems = []
         for user in users:
             if flag and config['delete_user'] and user in self.delete_lists:
@@ -313,6 +350,7 @@ class Loader(BasicDataset):
         return posItems
 
     def getUserGraph(self, dense=False):
+        #获得用户图
         user_mat_path = "{0}{1}".format(self.path,
                                         '/user_mat_distance_measure_{}_neighbor_num_{}.npz'.format(
                                             config['distance_measure'],
@@ -337,6 +375,7 @@ class Loader(BasicDataset):
         return user_mat
 
     def getItemGraph(self, dense=False):
+        #获得物品图
         item_mat_path = "{0}{1}".format(self.path,
                                         '/item_mat_distance_measure_{}_neighbor_num_{}.npz'.format(
                                             config['distance_measure'],
@@ -361,6 +400,7 @@ class Loader(BasicDataset):
         return item_mat
 
     def getThirdGraph(self):
+        #获得三阶关系图
         num = self.neighbor_num
         third_path = "{0}{1}".format(self.path,
                                      '/third_graph_distance_measure_{}_neighbor_num_{}_{}.npz'.format(

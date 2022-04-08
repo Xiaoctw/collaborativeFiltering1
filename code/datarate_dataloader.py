@@ -1,6 +1,11 @@
 from dataloader import *
 
+
 class DataRate(BasicDataset):
+    """
+    针对亚马逊类数据集的处理
+    """
+
     def __init__(self, path, config=config):
         # train or test
         super().__init__()
@@ -103,6 +108,9 @@ class DataRate(BasicDataset):
         self.UserItemScoreNet = csr_matrix((self.trainScores, (self.trainUser, self.trainItem)),
                                            shape=(self.n_user, self.m_item))
         if config['delete_user']:
+            """
+            删除部分用户，注意要将图中用户删除
+            """
             self.deleteUser()
         self.users_D = np.array(self.UserItemNet.sum(axis=1)).squeeze()
         self.users_D[self.users_D == 0.] = 1
@@ -122,9 +130,10 @@ class DataRate(BasicDataset):
         #     self.item_mat = sp.load_npz(self.path + '/item_mat.npz')
         # else:
         #     self.item_mat = None
-
+        # 转换索引方法
         user_item_mat = csc_matrix(self.UserItemNet)
         # 注意这里list1长度应该和物品个数相同
+        # 计算出现概率，用户有序负采样流程
         prob_list = [int(math.pow(len(user_item_mat[:, i].nonzero()[0]) * 10, 1)) for i in range(self.m_items)]
         # print(list1)
         # print('list1 size:{}'.format(len(list1)))
@@ -156,7 +165,6 @@ class DataRate(BasicDataset):
         self.UserItemNet = csr_matrix((np.ones(len(cols)), (rows, cols)),
                                       shape=(self.n_users, self.m_items))
         self.UserItemScoreNet = csr_matrix((data, (rows, cols)), shape=(self.n_users, self.m_items))
-        # 处理二阶关系图
 
     @property
     def n_users(self):
@@ -213,13 +221,19 @@ class DataRate(BasicDataset):
         return mat
 
     def getSparseGraph(self, add_self=False):
+        adj_mat_path = self.path + '/s_pre_adj_mat.npz'
+        adj_mat_self_path = self.path + '/s_pre_adj_mat_self.npz'
+        if config['delete_user'] and False:
+            adj_mat_path = self.path + '/s_pre_adj_mat_delete.npz'
+            adj_mat_self_path = self.path + '/s_pre_adj_mat_self_delete.npz'
+
         print("loading adjacency matrix")
         if self.Graph is None:
             try:
-                pre_adj_mat = sp.load_npz(self.path + '/s_pre_adj_mat.npz')
+                pre_adj_mat = sp.load_npz(adj_mat_path)
                 norm_adj = pre_adj_mat
                 if add_self:
-                    pre_adj_mat_self = sp.load_npz(self.path + '/s_pre_adj_mat_self.npz')
+                    pre_adj_mat_self = sp.load_npz(adj_mat_self_path)
                     norm_adj_self = pre_adj_mat_self
                 print("successfully loaded...")
             except:
@@ -241,7 +255,7 @@ class DataRate(BasicDataset):
                 norm_adj = norm_adj.tocsr()
                 end = time()
                 print("costing {:.4f} s, saved norm_mat...".format(end - s))
-                sp.save_npz(self.path + '/s_pre_adj_mat.npz', norm_adj)
+                sp.save_npz(adj_mat_path, norm_adj)
                 if add_self:
                     adj_mat_self = adj_mat + sp.eye(adj_mat.shape[0])
                     rowsum_self = np.array(adj_mat_self.sum(axis=1))
@@ -251,7 +265,7 @@ class DataRate(BasicDataset):
                     norm_adj_self = d_mat_self.dot(adj_mat_self)
                     norm_adj_self = norm_adj_self.dot(d_mat_self)
                     norm_adj_self = norm_adj_self.tocsr()
-                    sp.save_npz(self.path + '/s_pre_adj_mat_self.npz', norm_adj_self)
+                    sp.save_npz(adj_mat_self_path, norm_adj_self)
 
             if self.split:
                 self.Graph = self._split_A_hat(norm_adj)
@@ -274,6 +288,7 @@ class DataRate(BasicDataset):
         返回用户所有的度中，小于指定比例的mask
         如果小于，那么返回true
         否则返回false
+        这部分代码用于多目标交叉熵损失
         :return:
         """
         user_degs = [len(self.UserItemNet[i].nonzero()[0]) for i in range(self.n_user)]
@@ -323,15 +338,44 @@ class DataRate(BasicDataset):
         return posItems
 
     def getTopKGraph(self):
-        print('begin walk and find topK')
-        self.top_k_graph = utils.preprocess_adjacency_graph(self.UserItemNet, self.n_users, self.m_items)
-        print('finish walk and find topK')
-        # self.top_k_graph = utils.preprocess_topk_score_graph(self.UserItemScoreNet, self.n_users, self.m_items)
-        # self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
+        """
+        不同topK计算方法
+        在该数据集上可以采用随机游走
+        和根据分值返回topK两种方法
+        :return:
+        """
+        if config['random_walk']:
+            print('begin walk and find topK')
+            self.top_k_graph = utils.preprocess_adjacency_graph(self.UserItemNet, self.n_users, self.m_items)
+            print('finish walk and find topK')
+        # 两种计算topK计算图的方法
+        if config['top_k_score'] != 0 and config['random_walk'] == 0:
+            print('begin to topk score graph')
+            self.top_k_graph = utils.preprocess_topk_score_graph(self.UserItemScoreNet, self.n_users, self.m_items)
+        if config['top_k_score'] == 0 and config['random_walk'] == 0:
+            print('begin to construct random select graph')
+            self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
         # self.top_k_graph = self.graph_normalization_tensor(self.top_k_graph)
-        self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
+        self.top_k_graph = self.graph_helper(self.top_k_graph)
+        # self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
         self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
         return self.top_k_graph
+
+    def graph_helper(self, graph):
+        # 相当于进行计算D-1AD操作
+        dense = graph.to_dense()
+        D = torch.sum(dense, dim=1).float()
+        D[D == 0.] = 1.
+        D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
+        dense = dense / D_sqrt
+        dense = dense / D_sqrt.t()
+        index = dense.nonzero()
+        data = dense[dense >= 1e-9]
+        assert len(index) == len(data)
+        graph = torch.sparse.FloatTensor(index.t(), data, torch.Size(
+            [self.n_users + self.m_items, self.n_users + self.m_items]))
+        graph = graph.coalesce().to(world_config['device'])
+        return graph
 
     def getUserPosItemsScore(self, users):
         scores = []

@@ -52,18 +52,18 @@ def parse_args():
 
     parser.add_argument('--neighbor_num', type=int, default=8, help='Number of neighbor nodes')
 
-    #多目标学习部分参数
+    # 多目标学习部分参数
     parser.add_argument('--multi_action', type=int, default=0)
-    #两个目标的权重
+    # 两个目标的权重
     parser.add_argument('--w1', type=float, default=1.)
     parser.add_argument('--w2', type=float, default=0.1)
-    parser.add_argument('--multi_action_type',type=str,default='mmoe',choices=['mmoe','mlp'],help='multi action model type')
+    parser.add_argument('--multi_action_type', type=str, default='mmoe', choices=['mmoe', 'mlp'],
+                        help='multi action model type')
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--leaky_alpha', type=float, default=0.2)
     parser.add_argument('--reg_alpha', type=float, default=0.1)
     parser.add_argument('--loss_mode', type=str, default='mse',
                         help="cf_mo loss mode, default is mse, we can choose bce")
-
 
     # 这些是对一阶关系图进行筛选时，采用的部分参数。
     parser.add_argument('--top_k_graph', type=int, default=0, help='whether to choose top_k_graph or not')
@@ -74,16 +74,19 @@ def parse_args():
     parser.add_argument('--adj_top_k', type=int, default=16)
     parser.add_argument('--top_k_score', type=int, default=0, help='whether to choose top_k_score or not')
 
-
+    # 构建二阶图的参数
     parser.add_argument('--distance_measure', type=str, default='occurrence', choices=['occurrence',
                                                                                        'inverted',
                                                                                        'cosine_similarity'])
+    # 是否采用三阶关系图的参数
+    parser.add_argument('--third_graph', type=int, default=0, help='whether to choose third graph')
 
     parser.add_argument('--sample_neg', type=int, default=0, help='Whether to select negative items'
                                                                   ' samples according to frequency of occurrence')
 
-    parser.add_argument('--sample_pos', type=int, default=0, help='whether to sample positive items')
+    # parser.add_argument('--sample_pos', type=int, default=0, help='whether to sample positive items')
 
+    # 用作冷启动实验的部分参数
     parser.add_argument('--delete_user', type=int, default=0, help='Whether to delete users to test cold start')
 
     # DGCF的部分参数
@@ -142,7 +145,7 @@ config = {'batch_size': args.bpr_batch, 'latent_dim_rec': args.recdim, 'n_layers
           'epoch_temp_decay': args.epoch_temp_decay,
           'division_noise': args.division_noise,
           'sample_neg': args.sample_neg,
-          'sample_pos': args.sample_pos,
+          # 'sample_pos': args.sample_pos,
           'delete_user': args.delete_user,
           'ssl_ratio': args.ssl_ratio,
           'ssl_temp': args.ssl_temp,
@@ -150,8 +153,9 @@ config = {'batch_size': args.bpr_batch, 'latent_dim_rec': args.recdim, 'n_layers
           'ssl_mode': args.ssl_mode,
           'top_k_graph': args.top_k_graph,
           'random_walk': args.random_walk,
-          'top_k_score':args.top_k_score,
-          'multi_action_type':args.multi_action_type
+          'top_k_score': args.top_k_score,
+          'multi_action_type': args.multi_action_type,
+          'third_graph':args.third_graph,
           }
 # config['batch_size'] = 4096
 
@@ -210,8 +214,27 @@ if world_config['model_name'] in {'mf', 'lgn', 'ngcf', 'neumf', 'cmn', "dhcf"}:
     world_config['loss'] = 'bpr'
 elif world_config['model_name'] == 'dgcf':
     world_config['loss'] = 'dgcf_loss'
-else:  # cf_mo, bpr_cfig
+else:  # cf_mo, bpr_cfig, clagl_social, cf_ssl
     world_config['loss'] = 'score_loss'
+
+    # TRAINS = {
+    #     'cf_mo': Procedure.Score_train_original,
+    #     'clagl_social': Procedure.Score_train_original,
+    #     'lgn': Procedure.BPR_train_original,
+    #     'cf_ssl': Procedure.SSL_train_original
+    # }
+    
+if world_config['model_name'] in {'mf', 'lgn', 'ngcf', 'neumf', 'cmn', "dhcf"}:
+    world_config['train_original'] = 'bpr_train'
+elif world_config['model_name'] == 'dgcf':
+    world_config['train_original'] = 'dgcf_train'
+elif world_config['model_name']=='cf_ssl':
+    world_config['train_original'] = 'ssl_train'
+else:  # cf_mo, bpr_cfig, clagl_social
+    world_config['train_original'] = 'score_train'
+
+
+
 
 world_config['train_hard'] = False
 world_config['test_hard'] = True

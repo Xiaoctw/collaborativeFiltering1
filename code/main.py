@@ -1,3 +1,7 @@
+"""
+Created on Sep 11, 2021
+@author: Yinuo Xiao
+"""
 import world
 import utils
 from world import cprint
@@ -23,6 +27,8 @@ print(">>SEED:", world_config['seed'])
 print(world_config['device'])
 import register
 from register import dataset
+
+world_config['comment'] = world_config['model_name']
 
 # 构建一个模型
 Recmodel = register.MODELS[world_config['model_name']](config, dataset)

@@ -25,8 +25,10 @@ utils.set_seed(world_config['seed'])
 print(">>SEED:", world_config['seed'])
 # ==============================
 
-world_config['comment'] = 'cf_mo'
-world_config['model_name'] = 'cf_mo'
+
+world_config['model_name']='cf_mo'
+world_config['comment'] = world_config['model_name']
+
 
 from register import dataset
 

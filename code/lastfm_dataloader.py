@@ -1,3 +1,6 @@
+import os
+
+import numpy as np
 import torch
 
 from dataloader import *
@@ -26,7 +29,10 @@ class LastFM(BasicDataset):
         testData = pd.read_table(path + '/test1.txt', header=None)
         # print(testData.head())
         trustNet = pd.read_table(path + '/trustnetwork.txt', header=None).to_numpy()
+        self.trustNet = trustNet
         # print(trustNet[:5])
+        print("trustNet", trustNet.shape)
+        print('trustNet max', np.max(trustNet))
         trustNet -= 1
         trainData -= 1
         testData -= 1
@@ -110,6 +116,7 @@ class LastFM(BasicDataset):
         #     list1.append(len(self.UserItemNet[:, i].nonzero()[0]))
         print('end construct')
 
+
     def deleteUser(self):
         """
         这个函数的使用作用为测试冷启动的效果如何
@@ -131,6 +138,11 @@ class LastFM(BasicDataset):
         self.UserItemScoreNet = csr_matrix((data, (rows, cols)), shape=(self.n_users, self.m_items))
 
     def getDeleteUserGraph(self, users):
+        """
+        获得被删除用户的图，利用这个图可以构造用户的嵌入向量
+        :param users: 指定用户
+        :return:
+        """
         num_delete_user = len(users)
         graph = torch.zeros(num_delete_user, self.m_items, device=world_config['device'])
         for i, user in enumerate(users):
@@ -196,15 +208,24 @@ class LastFM(BasicDataset):
     #         return self.Graph, self.Graph_self
     #     return self.Graph
     #     # return self.top_k_graph
-
     def getSparseGraph(self, add_self=False):
+        """
+        获得稀疏图
+        :param add_self: 是否加上自循环
+        :return:
+        """
+        adj_mat_path = self.path + '/s_pre_adj_mat.npz'
+        adj_mat_self_path = self.path + '/s_pre_adj_mat_self.npz'
+        if config['delete_user'] and False:
+            adj_mat_path = self.path + '/s_pre_adj_mat_delete.npz'
+            adj_mat_self_path = self.path + '/s_pre_adj_mat_self_delete.npz'
         print("loading adjacency matrix")
         if self.Graph is None:
             try:
-                pre_adj_mat = sp.load_npz(self.path + '/s_pre_adj_mat.npz')
+                pre_adj_mat = sp.load_npz(adj_mat_path)
                 norm_adj = pre_adj_mat
                 if add_self:
-                    pre_adj_mat_self = sp.load_npz(self.path + '/s_pre_adj_mat_self.npz')
+                    pre_adj_mat_self = sp.load_npz(adj_mat_self_path)
                     norm_adj_self = pre_adj_mat_self
                 print("successfully loaded...")
             except:
@@ -226,7 +247,7 @@ class LastFM(BasicDataset):
                 norm_adj = norm_adj.tocsr()
                 end = time()
                 print("costing {:.4f} s, saved norm_mat...".format(end - s))
-                sp.save_npz(self.path + '/s_pre_adj_mat.npz', norm_adj)
+                sp.save_npz(adj_mat_path, norm_adj)
                 if add_self:
                     adj_mat_self = adj_mat + sp.eye(adj_mat.shape[0])
                     rowsum_self = np.array(adj_mat_self.sum(axis=1))
@@ -236,7 +257,7 @@ class LastFM(BasicDataset):
                     norm_adj_self = d_mat_self.dot(adj_mat_self)
                     norm_adj_self = norm_adj_self.dot(d_mat_self)
                     norm_adj_self = norm_adj_self.tocsr()
-                    sp.save_npz(self.path + '/s_pre_adj_mat_self.npz', norm_adj_self)
+                    sp.save_npz(adj_mat_self_path, norm_adj_self)
             self.Graph = self._convert_sp_mat_to_sp_tensor(norm_adj)
             self.Graph = self.Graph.coalesce().to(world_config['device'])
             if add_self:
@@ -246,6 +267,29 @@ class LastFM(BasicDataset):
         if add_self:
             return self.Graph, self.Graph_self
         return self.Graph
+
+
+    def getSocialGraph(self,dense=False):
+        num_trust = self.trustNet.shape[0]
+        print(np.max(self.trustNet))
+        # pass
+        social_path = self.path + '/social.npz'
+        if os.path.exists(social_path):
+            UserSocialNet = sp.load_npz(social_path)
+        else:
+            UserSocialNet = csr_matrix((np.ones(num_trust), self.trustNet.transpose()),
+                                       shape=(self.n_users, self.n_users))
+            UserSocialNet = utils.normalize_graph(UserSocialNet, mode=1)
+            sp.save_npz(social_path, UserSocialNet)
+        # print(UserSocialNet.sum(1))
+        if dense:
+            UserSocialNet = UserSocialNet.todense()
+            UserSocialNet = torch.Tensor(UserSocialNet)
+            return UserSocialNet
+        UserSocialNetTensor = self._convert_sp_mat_to_sp_tensor(UserSocialNet)
+        UserSocialNetTensor = UserSocialNetTensor.to(world_config['device'])
+        return UserSocialNetTensor
+
 
     def getDegMask(self):
         """
@@ -291,7 +335,9 @@ class LastFM(BasicDataset):
 
     def getTopKGraph(self):
         """
-        todo 添加不同topk方法的参数
+        不同topK计算方法
+        在该数据集上可以采用随机游走
+        和根据分值返回topK两种方法
         :return:
         """
         if config['random_walk']:
@@ -306,7 +352,7 @@ class LastFM(BasicDataset):
             print('begin to construct random select graph')
             self.top_k_graph = utils.preprocess_random_select_graph(self.UserItemNet, self.n_users, self.m_items)
         # self.top_k_graph = self.graph_normalization_tensor(self.top_k_graph)
-        self.top_k_graph=self.graph_helper(self.top_k_graph)
+        self.top_k_graph = self.graph_helper(self.top_k_graph)
         # self.top_k_graph = utils.normalize_tensor_graph(self.top_k_graph, mode=0)
         self.top_k_graph = self.top_k_graph.coalesce().to(world_config['device'])
         return self.top_k_graph
@@ -403,6 +449,7 @@ class LastFM(BasicDataset):
         return len(self.trainUniqueUsers)
 
     def getUserGraph(self, dense=False):
+        # 用户图
         num = self.neighbor_num
         path = "{0}{1}".format(self.path,
                                '/user_mat_distance_measure_{}_neighbor_num_{}.npz'.format(config['distance_measure'],
@@ -431,6 +478,7 @@ class LastFM(BasicDataset):
         return user_mat
 
     def getItemGraph(self, dense=False):
+        # 物品图
         num = self.neighbor_num
         path = "{0}{1}".format(self.path,
                                '/item_mat_distance_measure_{}_neighbor_num_{}.npz'.format(config['distance_measure'],
@@ -457,6 +505,7 @@ class LastFM(BasicDataset):
         return item_mat
 
     def getThirdGraph(self):
+        # 获得三阶图
         num = self.neighbor_num
         third_path = "{0}{1}".format(self.path,
                                      '/third_graph_distance_measure_{}_neighbor_num_{}_{}.npz'.format(
@@ -534,10 +583,10 @@ class LastFM(BasicDataset):
         return matrix
 
     def _convert_sp_mat_to_sp_tensor(self, X):
-        '''
+        """
         转化为
         tensor形式
-        '''
+        """
         coo = X.tocoo().astype(np.float32)
         row = torch.Tensor(coo.row).long()
         col = torch.Tensor(coo.col).long()
