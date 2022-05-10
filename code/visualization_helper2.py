@@ -17,14 +17,18 @@ import numpy as np
 
 np.random.seed(2021)
 world_config = world.world_config
-world_config['comment'] = 'cf_mo'
-world_config['model_name'] = 'cf_mo'
+
+world_config['model_name'] = 'lgn'
+world_config['comment'] = world_config['model_name']
 config = world.config
+import register
 from register import dataset
 
-recModel = model.CLAGL(config, dataset)
-weight_file = './checkpoints' + '/model_name-cf_mo-dataset-{}-comment-cf_mo-n_layers-2-latent_dim-64-delete_0.pth.tar'.format(
-    world_config['dataset'])
+recModel = register.MODELS[world_config['model_name']](config, dataset)
+
+weight_file = './checkpoints' + '/model_name-{}-dataset-{}-comment-{}-n_layers-2-latent_dim-64-delete_0.pth.tar'.format(
+    world_config['model_name'], world_config['dataset'], world_config['comment'])
+
 
 recModel.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu')))
 users_emb, items_emb = recModel.computer()
@@ -55,7 +59,7 @@ embs = embs.detach().numpy()
 tsne = TSNE(n_components=2, verbose=1, init='random')
 embed = tsne.fit_transform(embs)
 
-plt.scatter(embed[:len(users), 0], embed[:len(users), 1], c='b', marker='v',label='users')
+plt.scatter(embed[:len(users), 0], embed[:len(users), 1], c='b', marker='v', label='users')
 plt.scatter(embed[len(users):len(users) + top_k, 0], embed[len(users):len(users) + top_k, 1], c='r',
             label='items')
 plt.scatter(embed[len(users) + top_k:len(users) + 2 * top_k, 0], embed[len(users) + top_k:len(users) + 2 * top_k, 1],
@@ -64,8 +68,9 @@ plt.scatter(embed[len(users) + 2 * top_k:len(users) + 3 * top_k, 0],
             embed[len(users) + 2 * top_k:len(users) + 3 * top_k, 1], c='y', label='items')
 plt.scatter(embed[len(users) + 3 * top_k:len(users) + 4 * top_k, 0],
             embed[len(users) + 3 * top_k:len(users) + 4 * top_k, 1], c='c', label='items')
-plt.title('CLAGL {}'.format(world_config['dataset']))
-plt.legend(loc='lower right')
-picture_path = '../pictures' + '/CLAGL {}.png'.format(world_config['dataset'])
+plt.title('{} {}'.format(world_config['model_name'],world_config['dataset']))
+plt.legend(loc='upper right')
+
+picture_path = '../pictures' + '/{} {}.png'.format(world_config['comment'], world_config['dataset'])
 plt.savefig(picture_path)
 plt.show()

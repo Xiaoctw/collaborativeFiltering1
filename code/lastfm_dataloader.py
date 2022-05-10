@@ -116,7 +116,6 @@ class LastFM(BasicDataset):
         #     list1.append(len(self.UserItemNet[:, i].nonzero()[0]))
         print('end construct')
 
-
     def deleteUser(self):
         """
         这个函数的使用作用为测试冷启动的效果如何
@@ -268,8 +267,7 @@ class LastFM(BasicDataset):
             return self.Graph, self.Graph_self
         return self.Graph
 
-
-    def getSocialGraph(self,dense=False):
+    def getSocialGraph(self, dense=False):
         num_trust = self.trustNet.shape[0]
         print(np.max(self.trustNet))
         # pass
@@ -289,7 +287,6 @@ class LastFM(BasicDataset):
         UserSocialNetTensor = self._convert_sp_mat_to_sp_tensor(UserSocialNet)
         UserSocialNetTensor = UserSocialNetTensor.to(world_config['device'])
         return UserSocialNetTensor
-
 
     def getDegMask(self):
         """

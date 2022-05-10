@@ -222,7 +222,7 @@ def getFileName():
         file = f"mf-{world_config['dataset']}-{world_config['comment']}-{config['latent_dim_rec']}.pth.tar"
 
     elif world_config['model_name'] in {'lgn', 'ngcf', 'neumf', 'cmn', 'cf_mo', 'dhcf', 'bpr_cfig', 'cf_smp', 'dgcf',
-                                        'drop_cf_mo', 'cf_ssl','clagl_social'}:
+                                        'drop_cf_mo', 'cf_ssl','clagl_social','clagl','multi_action'}:
         file = "model_name-{}-dataset-{}-comment-{}-n_layers-{}-latent_dim-{}-delete_{}.pth.tar".format(
             world_config['model_name'], world_config['dataset'],
             world_config['comment'], config['n_layers'],

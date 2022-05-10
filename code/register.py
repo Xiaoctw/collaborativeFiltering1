@@ -9,6 +9,7 @@ import os
 from lastfm_dataloader import LastFM
 from loader_dataloader import Loader
 from datarate_dataloader import DataRate
+from deli_dataloader import Deli
 
 import Procedure
 
@@ -24,6 +25,10 @@ elif world_config['dataset'] == 'lastfm':
     #  path = Path(__file__).parent.parent / 'data' / 'lastfm'
     path = join(dirname(os.path.dirname(__file__)), 'data', 'lastfm')
     dataset = LastFM(path=path)
+elif world_config['dataset'] == 'deli':
+    path = join(dirname(os.path.dirname(__file__)), 'data', 'deli')
+    dataset = Deli(path=path)
+
 elif world_config['dataset'] in ['amazon-electronic', 'amazon-book', 'amazon-book-init', 'movielen']:
     path = join(dirname(os.path.dirname(__file__)), 'data', world_config['dataset'])
     dataset = DataRate(path=path)
@@ -47,6 +52,7 @@ MODELS = {
     'neumf': model.NeuMF,
     'cmn': model.CMN,
     'cf_mo': model.CLAGL,
+    'clagl':model.CLAGL,
     'dhcf': model.DHCF,
     'multi_action': model.MultiActionModel,
     'clagl_social': model.CLAGL_Social
@@ -60,5 +66,5 @@ LOSSES = {
 TRAINS = {
     'score_train': Procedure.Score_train_original,
     'bpr_train': Procedure.BPR_train_original,
-    'ssl_train':Procedure.SSL_train_original
+    'ssl_train': Procedure.SSL_train_original
 }

@@ -288,8 +288,6 @@ class NGCF(BasicModel):
             num_embeddings=self.num_users, embedding_dim=self.latent_dim)
         self.embedding_item = torch.nn.Embedding(
             num_embeddings=self.num_items, embedding_dim=self.latent_dim)
-        # nn.init.xavier_uniform_(self.embedding_item.weight,gain=1)
-        # nn.init.xavier_uniform_(self.embedding_user.weight,gain=1)
         nn.init.normal_(self.embedding_item.weight, std=0.1)
         nn.init.normal_(self.embedding_user.weight, std=0.1)
         for i in range(1, self.n_layers + 1):
@@ -372,10 +370,10 @@ class NGCF(BasicModel):
                 all_emb = F.leaky_relu(all_emb, negative_slope=0.2)
         ngcf_out = all_emb  # 不进行压缩的话效果更好
         # ngcf_out = torch.cat(embs, dim=1)
-        # embs = torch.stack(embs, dim=1)
+        embs = torch.stack(embs, dim=1)
         # print(embs.size())
         # 取了均值
-        # ngcf_out = torch.mean(embs, dim=1)
+        ngcf_out = torch.mean(embs, dim=1)
         users, items = torch.split(ngcf_out, [self.num_users, self.num_items])
         return users, items
 
@@ -966,21 +964,21 @@ class MultiActionModel(CF_MO):
         all_users, all_items = self.computer()
         users_emb = all_users[users]
         items_emb = all_items
-        # users_emb = F.leaky_relu(self.W_u(users_emb), negative_slope=self.leaky_alpha)
-        # items_emb = F.leaky_relu(self.W_i(items_emb), negative_slope=self.leaky_alpha)
         if not self.train_mul:
             ratings = torch.matmul(users_emb, items_emb.t())
         else:
             user_emb_list = self.user_transform(users_emb)
             item_emb_list = self.item_transform(items_emb)
             if self.loss_mode == 'mse':
+                user_emb_mse = user_emb_list[0]
+                item_emb_mse = item_emb_list[0]
                 if self.multi_action_type == 'mmoe':
                     ratings = torch.multiply(torch.mm(user_emb_list[0], item_emb_list[0].t()),
                                              torch.pow(torch.abs(torch.mm(user_emb_list[1], item_emb_list[1].t())),
                                                        self.reg_alpha))
                 else:
                     ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
-                                             torch.pow(torch.abs(torch.mm(user_emb_list[0], item_emb_list[0].t())),
+                                             torch.pow(torch.abs(torch.mm(user_emb_mse, item_emb_mse.t())),
                                                        self.reg_alpha))
             else:
                 ratings = torch.multiply(torch.mm(users_emb, items_emb.t()),
@@ -1004,6 +1002,9 @@ class MultiActionModel(CF_MO):
             score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
             return self.w1 * score1, 0 * score1, reg_loss
         else:
+            user_emb_mse=user_emb_list[0]
+            pos_item_emb_mse=pos_item_emb_list[0]
+            neg_item_emb_mse=neg_item_emb_list[0]
             if self.multi_action_type == 'mmoe':
                 pos_scores1 = torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1)
                 neg_scores1 = torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1)
@@ -1012,8 +1013,10 @@ class MultiActionModel(CF_MO):
             else:
                 pos_scores1 = torch.sum(torch.mul(users_emb, pos_emb), dim=1)  # (num_user,) 可以考虑在这里加入权重
                 neg_scores1 = torch.sum(torch.mul(users_emb, neg_emb), dim=1)  # (num_user,)
-                pred_pos = torch.abs(torch.sum(torch.mul(user_emb_list[0], pos_item_emb_list[0]), dim=1))
-                pred_neg = torch.abs(torch.sum(torch.mul(user_emb_list[0], neg_item_emb_list[0]), dim=1))
+                pred_pos = torch.abs(torch.sum(torch.mul(user_emb_mse, pos_item_emb_mse), dim=1))
+                pred_neg = torch.abs(torch.sum(torch.mul(user_emb_mse, neg_item_emb_mse), dim=1))
+                # print('pred_pos:{}'.format(pred_pos))
+                # print('pred_neg:{}'.format(pred_neg))
             score1 = torch.mean(F.softplus(neg_scores1 - pos_scores1))
             neg_score = torch.zeros_like(score, device=score.device)
             score2 = F.mse_loss(pred_pos, score) + F.mse_loss(pred_neg, neg_score)
@@ -1063,6 +1066,7 @@ class CLAGL(CF_MO):
                                               keep_prob=self.keep_prob)
         self.light_gcn_layer = LightGCN_layer(self.latent_dim, self.graph, activation=False, non_linear=False,
                                               dropout=self.dropout, keep_prob=self.keep_prob)
+        self.clagl_layer = CLAGL_layer(graph=self.graph, user_graph=self.user_graph, item_graph=self.item_graph)
 
     def computer(self):
         """
@@ -1080,6 +1084,8 @@ class CLAGL(CF_MO):
         graph = self.graph
         user_graph = self.user_graph
         item_graph = self.item_graph
+
+        # users_emb1, items_emb1, users_emb2, items_emb2 = self.clagl_layer(users_emb, items_emb)
 
         users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
         users.append(users_emb1)
@@ -1165,25 +1171,25 @@ class CLAGL_Social(CLAGL):
         items_emb = self.embedding_item.weight
         users = [users_emb]
         items = [items_emb]
-
         graph = self.graph
-
         ## layer1
         users_emb1, items_emb1 = self.light_gcn_layer([users_emb, items_emb], graph)
         users.append(users_emb1)
         items.append(items_emb1)
-
         ##layer2
         items_emb2 = torch.sparse.mm(self.item_graph, items_emb)
         items.append(items_emb2)
-        users_emb2 = torch.sparse.mm(self.user_social_graph, users_emb)
-        users.append(users_emb2)
 
+        users_emb2_1 = torch.sparse.mm(self.user_social_graph, users_emb)
+
+        users_emb2_2 = torch.sparse.mm(self.user_graph, users_emb)
+        users_emb2 = (users_emb2_1 + users_emb2_2) / 2.
+
+        users.append(users_emb2)
         users_emb = torch.stack(users, dim=1)  # (batch_size,n_layers,embedding_dim)
         users_emb = torch.mean(users_emb, dim=1)
         items_emb = torch.stack(items, dim=1)
         items_emb = torch.mean(items_emb, dim=1)
-
         return users_emb, items_emb
 
 
@@ -1585,7 +1591,6 @@ class LightGCN_layer(nn.Module):
     def forward(self, input, graph=None):
         if graph is None:
             graph = self.graph
-
         users_emb, items_emb = input[0], input[1]
         num_user, num_item = users_emb.shape[0], items_emb.shape[0]
         all_emb = torch.cat([users_emb, items_emb], dim=0)
@@ -1600,6 +1605,22 @@ class LightGCN_layer(nn.Module):
             all_emb = F.leaky_relu(all_emb, negative_slope=0.2)
         h_u2, h_i2 = torch.split(all_emb, [num_user, num_item])
         return h_u2, h_i2
+
+
+class CLAGL_layer(nn.Module):
+    def __init__(self, graph, user_graph, item_graph):
+        super(CLAGL_layer, self).__init__()
+        self.graph = graph
+        self.user_graph = user_graph
+        self.item_graph = item_graph
+
+    def forward(self, user_emb, item_emb):
+        all_emb = torch.cat([user_emb, item_emb])
+        all_emb1, user_emb2, item_emb2 = torch.sparse.mm(self.graph, all_emb), torch.sparse.mm(self.user_graph,
+                                                                                               user_emb), torch.sparse.mm(
+            self.item_graph, item_emb)
+        user_emb1, item_emb1 = torch.split(all_emb1, [user_emb.shape[0], item_emb.shape[0]])
+        return user_emb1, item_emb1, user_emb2, item_emb2
 
 
 class Light_cross_layer(nn.Module):

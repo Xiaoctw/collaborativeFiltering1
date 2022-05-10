@@ -80,7 +80,6 @@ def load_lastfm_graph():
 #         assert False
 #     g.add_edges(u=)
 
-
 class Light_Layer(nn.Module):
     def __init__(self, ):
         """
@@ -116,8 +115,6 @@ class Sim_Layer(nn.Module):
             }
             g.multi_update_all(funcs, 'mean')
             return g.nodes['user'].data['h'], g.nodes['item'].data['h']
-
-
 
 
 class LightGCN_dgl(nn.Module):
@@ -183,7 +180,7 @@ class LightGCN_dgl(nn.Module):
 
 
 class CLAGL_dgl(LightGCN_dgl):
-    def __init__(self, graph, num_user,num_item, n_layer, embedding_dim):
+    def __init__(self, graph, num_user, num_item, n_layer, embedding_dim):
         super(CLAGL_dgl, self).__init__(graph, num_user, num_item, n_layer, embedding_dim)
         self.light_layer = Light_Layer()
         self.sim_layer = Sim_Layer()
@@ -209,6 +206,7 @@ class CLAGL_dgl(LightGCN_dgl):
         light_out = torch.mean(embs, dim=1)
         h_user, h_item = torch.split(light_out, [self.num_user, self.num_item])
         return h_user, h_item
+
 
 
 g, num_user, num_item = load_lastfm_graph()

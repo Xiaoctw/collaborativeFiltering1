@@ -30,7 +30,8 @@ def parse_args():
     parser.add_argument('--testbatch', type=int, default=100,
                         help="the batch size of users for testing")
     parser.add_argument('--dataset', type=str, default='lastfm',
-                        help="available datasets: [lastfm, gowalla, yelp2018, amazon-book,amazon-electronic,amazon-book-init,movielen]")
+                        help="available datasets: [lastfm, gowalla, yelp2018, amazon-book,"
+                             "amazon-electronic,amazon-book-init,movielen,deli]")
     parser.add_argument('--path', type=str, default="./checkpoints",
                         help="path to save weights")
     parser.add_argument('--topks', nargs='?', default="[20,40,60]",
@@ -44,7 +45,9 @@ def parse_args():
     parser.add_argument('--multicore', type=int, default=1, help='whether we use multiprocessing or not in test')
     parser.add_argument('--pretrain', type=int, default=0, help='whether we use pretrained weight or not')
     parser.add_argument('--seed', type=int, default=2021, help='random seed')
-    parser.add_argument('--model', type=str, default='lgn', help='rec-model, support [mf, lgn, ngcf,neumf,cmn,cf_mo]')
+    parser.add_argument('--model', type=str, default='lgn', help='rec-model, support [mf, lgn, ngcf,'
+                                                                 'neumf,cmn,cf_mo,clagl,multi_action]')
+    parser.add_argument('--GPU',type=int,default=1)
     parser.add_argument('--cuda', type=str, default='1')
 
     parser.add_argument('--attn_weight', type=int, default=0)
@@ -53,11 +56,11 @@ def parse_args():
     parser.add_argument('--neighbor_num', type=int, default=8, help='Number of neighbor nodes')
 
     # 多目标学习部分参数
-    parser.add_argument('--multi_action', type=int, default=0)
+    parser.add_argument('--multi_action', type=int, default=1)
     # 两个目标的权重
     parser.add_argument('--w1', type=float, default=1.)
     parser.add_argument('--w2', type=float, default=0.1)
-    parser.add_argument('--multi_action_type', type=str, default='mmoe', choices=['mmoe', 'mlp'],
+    parser.add_argument('--multi_action_type', type=str, default='mlp', choices=['mmoe', 'mlp'],
                         help='multi action model type')
     parser.add_argument('--num_experts', type=int, default=16)
     parser.add_argument('--leaky_alpha', type=float, default=0.2)
@@ -161,8 +164,9 @@ config = {'batch_size': args.bpr_batch, 'latent_dim_rec': args.recdim, 'n_layers
 
 
 world_config = {}
-all_dataset = ['lastfm', 'gowalla', 'yelp2018', 'amazon-book', 'amazon-electronic', 'amazon-book-init', 'movielen']
-all_models = ['mf', 'lgn', 'ngcf', 'neumf', 'cmn', 'cf_mo', 'dhcf']
+all_dataset = ['lastfm', 'gowalla', 'yelp2018', 'amazon-book',
+               'amazon-electronic', 'amazon-book-init', 'movielen','deli']
+all_models = ['mf', 'lgn', 'ngcf', 'neumf', 'cmn', 'cf_mo', 'dhcf', 'clagl']
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 # args = parse_args()
 world_config['args'] = args
@@ -176,7 +180,7 @@ world_config['CODE_PATH'] = CODE_PATH
 world_config['DATA_PATH'] = DATA_PATH
 world_config['BOARD_PATH'] = BOARD_PATH
 world_config['FILE_PATH'] = FILE_PATH
-GPU = torch.cuda.is_available()
+GPU = torch.cuda.is_available() and args.GPU==1
 print('GPU is available:{}'.format(GPU))
 world_config['GPU'] = GPU
 device = torch.device('cuda:{}'.format(args.cuda) if GPU and args.cuda else "cpu")
@@ -214,7 +218,7 @@ if world_config['model_name'] in {'mf', 'lgn', 'ngcf', 'neumf', 'cmn', "dhcf"}:
     world_config['loss'] = 'bpr'
 elif world_config['model_name'] == 'dgcf':
     world_config['loss'] = 'dgcf_loss'
-else:  # cf_mo, bpr_cfig, clagl_social, cf_ssl
+else:  # cf_mo, bpr_cfig, clagl_social, cf_ssl,clagl
     world_config['loss'] = 'score_loss'
 
     # TRAINS = {

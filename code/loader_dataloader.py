@@ -197,6 +197,7 @@ class Loader(BasicDataset):
         mat = torch.sparse.FloatTensor(index, data, torch.Size(coo.shape))
         return mat
 
+
     def getSparseGraph(self, add_self=False):
         """
         获得稀疏图，用户-物品的交互图
